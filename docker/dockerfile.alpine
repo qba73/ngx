@@ -3,9 +3,9 @@ FROM alpine:3.16
 # Define NGINX versions for NGINX Plus and NGINX Plus modules
 # Uncomment this block and the versioned nginxPackages in the main RUN
 # instruction to install a specific release
-# ENV NGINX_VERSION 27
-# ENV NJS_VERSION   0.7.4
-# ENV PKG_RELEASE   1
+#ENV NGINX_VERSION 27
+#ENV NJS_VERSION   0.7.4
+#ENV PKG_RELEASE   1
 
 # Download certificate and key from the customer portal (https://account.f5.com)
 # and copy to the build context
@@ -29,7 +29,7 @@ RUN --mount=type=secret,id=nginx-crt,dst=cert.pem \
         # nginx-plus-module-image-filter=${NGINX_VERSION}-${PKG_RELEASE} \
         # nginx-plus-module-perl \
         # nginx-plus-module-perl=${NGINX_VERSION}-${PKG_RELEASE} \
-        # nginx-plus-module-njs \
+        nginx-plus-module-njs \
         # nginx-plus-module-njs=${NGINX_VERSION}.${NJS_VERSION}-${PKG_RELEASE} \
     " \
     KEY_SHA512="e7fa8303923d9b95db37a77ad46c68fd4755ff935d0a534d26eba83de193c76166c68bfe7f65471bf8881004ef4aa6df3e34689c305662750c0172fca5d8552a *stdin" \

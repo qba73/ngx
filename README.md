@@ -24,14 +24,29 @@ import "github.com/qba73/ngx"
 
 ## Testing
 
+Install [gotestdox](https://github.com/bitfield/gotestdox)
+```bash
+go install github.com/bitfield/gotestdox/cmd/gotestdox@latest
+```
+Run internal tests
+```bash
+$ gotestdox -run BuildsAddress
+github.com/qba73/ngx:
+ ✔ Builds address on valid input with host and port (0.00s)
+ ✔ Builds address on valid input with unix socket (0.00s)
+ ✔ Builds address on valid input with IPV6 and port (0.00s)
+ ✔ Builds address on valid input with IPV4 and port (0.00s)
+ ✔ Builds address on valid input with IPV4 address and without port (0.00s)
+ ✔ Builds address on valid input with address and without port (0.00s)
+ ✔ Builds address on valid input with IPV6 address and without port (0.00s)
+```
+
 Prerequisites:
-* Docker
-* Go
-* Make
-* NGINX Plus license - put `nginx-repo.crt` and `nginx-repo.key` into the `docker` folder.
 
-Run Tests:
+- Docker
+- NGINX Plus license - put `nginx-repo.crt` and `nginx-repo.key` into the `docker` folder.
 
+Run tests in docker container:
 ```
 $ make docker-build && make test
 ```

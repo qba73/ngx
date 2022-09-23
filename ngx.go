@@ -1583,15 +1583,12 @@ func addPortToServer(server string) string {
 	if len(strings.Split(server, ":")) == 2 {
 		return server
 	}
-
 	if len(strings.Split(server, "]:")) == 2 {
 		return server
 	}
-
 	if strings.HasPrefix(server, "unix:") {
 		return server
 	}
-
 	return fmt.Sprintf("%v:%v", server, defaultServerPort)
 }
 

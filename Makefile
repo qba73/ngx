@@ -15,10 +15,10 @@ test: run-nginx-plus test-run configure-no-stream-block test-run-no-stream-block
 lint:
 	docker run --pull always --rm -v $(shell pwd):/ngx -w /ngx -v $(shell go env GOCACHE):/cache/go -e GOCACHE=/cache/go -e GOLANGCI_LINT_CACHE=/cache/go -v $(shell go env GOPATH)/pkg:/go/pkg golangci/golangci-lint:latest golangci-lint --color always run
 
-docker-build:
+build-debian:
 	docker build --secret id=nginx-repo.crt,src=docker/nginx-repo.crt --secret id=nginx-repo.key,src=docker/nginx-repo.key --build-arg NGINX_PLUS_VERSION=$(NGINX_PLUS_VERSION) -t nginx-plus:$(NGINX_PLUS_VERSION) docker
 
-docker-build-alpine:
+build-alpine:
 	docker build --secret id=nginx-crt,src=docker/nginx-crt --secret id=nginx-key,src=docker/nginx-key --build-arg NGINX_PLUS_VERSION=$(NGINX_PLUS_VERSION) -t nginx-plus:$(NGINX_PLUS_VERSION) -f docker/dockerfile.alpine .
 
 
@@ -26,6 +26,13 @@ run-nginx-plus:
 	docker network create --driver bridge $(DOCKER_NETWORK)
 	docker run --network=$(DOCKER_NETWORK) -d --name $(DOCKER_NGINX_PLUS) --network-alias=$(DOCKER_NETWORK_ALIAS) --rm -p 8080:8080 -p 8081:8081 nginx-plus:$(NGINX_PLUS_VERSION)
 	docker run --network=$(DOCKER_NETWORK) -d --name $(DOCKER_NGINX_PLUS_HELPER) --network-alias=$(DOCKER_NETWORK_ALIAS) --rm -p 8090:8080 -p 8091:8081 nginx-plus:$(NGINX_PLUS_VERSION)
+
+run-nginx:
+	docker network create --driver bridge $(DOCKER_NETWORK)
+	docker run --network=$(DOCKER_NETWORK) -d --name $(DOCKER_NGINX_PLUS) --network-alias=$(DOCKER_NETWORK_ALIAS) --rm -p 8080:8080 -p 8081:8081 nginx-plus:$(NGINX_PLUS_VERSION)
+	docker run --network=$(DOCKER_NETWORK) -d --name $(DOCKER_NGINX_PLUS_HELPER) --network-alias=$(DOCKER_NETWORK_ALIAS) --rm -p 8090:8080 -p 8091:8081 nginx-plus:$(NGINX_PLUS_VERSION)
+
+
 
 test-run:
 	docker run --rm \

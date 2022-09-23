@@ -1,7 +1,6 @@
 package ngx
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -320,61 +319,85 @@ func TestStreamDetermineUpdates(t *testing.T) {
 
 	for _, test := range tests {
 		toAdd, toDelete, toUpdate := determineStreamUpdates(test.updated, test.nginx)
-		if !reflect.DeepEqual(toAdd, test.expectedToAdd) || !reflect.DeepEqual(toDelete, test.expectedToDelete) || !reflect.DeepEqual(toUpdate, test.expectedToUpdate) {
-			t.Errorf("determiteUpdates(%v, %v) = (%v, %v, %v)", test.updated, test.nginx, toAdd, toDelete, toUpdate)
+		if !cmp.Equal(toAdd, test.expectedToAdd) {
+			t.Error(cmp.Diff(toAdd, test.expectedToAdd))
+		}
+		if !cmp.Equal(toDelete, test.expectedToDelete) {
+			t.Error(cmp.Diff(toDelete, test.expectedToDelete))
+		}
+		if !cmp.Equal(toUpdate, test.expectedToUpdate) {
+			t.Errorf(cmp.Diff(toDelete, test.expectedToDelete))
 		}
 	}
 }
 
-func TestAddPortToServer(t *testing.T) {
-	// More info about addresses http://nginx.org/en/docs/http/ngx_http_upstream_module.html#server
-	tests := []struct {
-		address  string
-		expected string
-		msg      string
-	}{
-		{
-			address:  "example.com:8080",
-			expected: "example.com:8080",
-			msg:      "host and port",
-		},
-		{
-			address:  "127.0.0.1:8080",
-			expected: "127.0.0.1:8080",
-			msg:      "ipv4 and port",
-		},
-		{
-			address:  "[::]:8080",
-			expected: "[::]:8080",
-			msg:      "ipv6 and port",
-		},
-		{
-			address:  "unix:/path/to/socket",
-			expected: "unix:/path/to/socket",
-			msg:      "unix socket",
-		},
-		{
-			address:  "example.com",
-			expected: "example.com:80",
-			msg:      "host without port",
-		},
-		{
-			address:  "127.0.0.1",
-			expected: "127.0.0.1:80",
-			msg:      "ipv4 without port",
-		},
-		{
-			address:  "[::]",
-			expected: "[::]:80",
-			msg:      "ipv6 without port",
-		},
+func TestBuildsAddressOnValidInputWithHostAndPort(t *testing.T) {
+	t.Parallel()
+	input := "example.com:8080"
+	want := "example.com:8080"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want: %s, got %s", want, got)
 	}
+}
 
-	for _, test := range tests {
-		result := addPortToServer(test.address)
-		if result != test.expected {
-			t.Errorf("addPortToServer(%v) returned %v but expected %v for %v", test.address, result, test.expected, test.msg)
-		}
+func TestBuildsAddressOnValidInputWithIPV4AndPort(t *testing.T) {
+	t.Parallel()
+	input := "127.0.0.1:8080"
+	want := "127.0.0.1:8080"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
+	}
+}
+
+func TestBuildsAddressOnValidInputWithIPV6AndPort(t *testing.T) {
+	t.Parallel()
+	input := "[::]:8080"
+	want := "[::]:8080"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
+	}
+}
+
+func TestBuildsAddressOnValidInputWithUnixSocket(t *testing.T) {
+	t.Parallel()
+	input := "unix:/path/to/socket"
+	want := "unix:/path/to/socket"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
+	}
+}
+
+func TestBuildsAddressOnValidInputWithAddressAndWithoutPort(t *testing.T) {
+	t.Parallel()
+	input := "example.com"
+	want := "example.com:80"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
+	}
+}
+
+func TestBuildsAddressOnValidInputWithIPV4AddressAndWithoutPort(t *testing.T) {
+	t.Parallel()
+	input := "127.0.0.1"
+	want := "127.0.0.1:80"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
+	}
+}
+
+func TestBuildsAddressOnValidInputWithIPV6AddressAndWithoutPort(t *testing.T) {
+	t.Parallel()
+	input := "[::]"
+	want := "[::]:80"
+	got := addPortToServer(input)
+	if want != got {
+		t.Errorf("want %s, got %s", want, got)
 	}
 }
 
