@@ -1,8 +1,10 @@
-package client
+package ngx
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestDetermineUpdates(t *testing.T) {
@@ -152,9 +154,19 @@ func TestDetermineUpdates(t *testing.T) {
 
 	for _, test := range tests {
 		toAdd, toDelete, toUpdate := determineUpdates(test.updated, test.nginx)
-		if !reflect.DeepEqual(toAdd, test.expectedToAdd) || !reflect.DeepEqual(toDelete, test.expectedToDelete) || !reflect.DeepEqual(toUpdate, test.expectedToUpdate) {
-			t.Errorf("determineUpdates(%v, %v) = (%v, %v, %v)", test.updated, test.nginx, toAdd, toDelete, toUpdate)
+
+		if !cmp.Equal(toAdd, test.expectedToAdd) {
+			t.Error(cmp.Diff(toAdd, test.expectedToAdd))
 		}
+
+		if !cmp.Equal(toDelete, test.expectedToDelete) {
+			t.Error(cmp.Diff(toDelete, test.expectedToDelete))
+		}
+
+		if !cmp.Equal(toUpdate, test.expectedToUpdate) {
+			t.Error(cmp.Diff(toUpdate, test.expectedToUpdate))
+		}
+
 	}
 }
 
@@ -517,4 +529,40 @@ func TestHaveSameParametersForStream(t *testing.T) {
 			t.Errorf("haveSameParametersForStream(%v, %v) returned %v but expected %v", test.server, test.serverNGX, result, test.expected)
 		}
 	}
+}
+
+const (
+	cacheZone      = "http_cache"
+	upstream       = "test"
+	streamUpstream = "stream_test"
+	streamZoneSync = "zone_test_sync"
+	locationZone   = "location_test"
+	resolverMetric = "resolver_test"
+	reqZone        = "one"
+	connZone       = "addr"
+	streamConnZone = "addr_stream"
+)
+
+func compareUpstreamServers(x []UpstreamServer, y []UpstreamServer) bool {
+	var xServers []string
+	for _, us := range x {
+		xServers = append(xServers, us.Server)
+	}
+	var yServers []string
+	for _, us := range y {
+		yServers = append(yServers, us.Server)
+	}
+	return cmp.Equal(xServers, yServers)
+}
+
+func compareStreamUpstreamServers(x []StreamUpstreamServer, y []StreamUpstreamServer) bool {
+	var xServers []string
+	for _, us := range x {
+		xServers = append(xServers, us.Server)
+	}
+	var yServers []string
+	for _, us := range y {
+		yServers = append(yServers, us.Server)
+	}
+	return cmp.Equal(xServers, yServers)
 }

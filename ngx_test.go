@@ -1,15 +1,45 @@
-package tests
+package ngx_test
 
 import (
 	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/nginxinc/nginx-plus-go-client/client"
-	"github.com/nginxinc/nginx-plus-go-client/tests/helpers"
+	"github.com/qba73/ngx"
 )
+
+// GetAPIEndpoint returns the api endpoint.
+// For testing purposes only. The endpoint is set in the Makefile.
+func GetAPIEndpoint() string {
+	ep := os.Getenv("TEST_API_ENDPOINT")
+	if ep == "" {
+		panic("TEST_API_ENDPOINT env variable is not set or empty")
+	}
+	return ep
+}
+
+// GetAPIEndpointOfHelper returns the api endpoint of the helper.
+// For testing purposes only. The endpoint is set in the Makefile.
+func GetAPIEndpointOfHelper() string {
+	ep := os.Getenv("TEST_API_ENDPOINT_OF_HELPER")
+	if ep == "" {
+		panic("TEST_API_ENDPOINT_OF_HELPER env variable is not set or empty")
+	}
+	return ep
+}
+
+// GetStreamAddress returns the address of the unavailable stream server.
+// For testing purposes only. The address is set in the Makefile.
+func GetStreamAddress() string {
+	addr := os.Getenv("TEST_UNAVAILABLE_STREAM_ADDRESS")
+	if addr == "" {
+		panic("TEST_UNAVAILABLE_STREAM_ADDRESS env variable is not set or empty")
+	}
+	return addr
+}
 
 const (
 	cacheZone      = "http_cache"
@@ -35,12 +65,12 @@ var (
 
 func TestStreamClient(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
-		t.Fatalf("Error when creating a client: %v", err)
+		t.Fatalf("Error when creating a ngx: %v", err)
 	}
 
-	streamServer := client.StreamUpstreamServer{
+	streamServer := ngx.StreamUpstreamServer{
 		Server: "127.0.0.1:8001",
 	}
 
@@ -79,7 +109,7 @@ func TestStreamClient(t *testing.T) {
 	}
 
 	// test updating stream servers
-	streamServers1 := []client.StreamUpstreamServer{
+	streamServers1 := []ngx.StreamUpstreamServer{
 		{
 			Server: "127.0.0.1:8001",
 		},
@@ -195,7 +225,7 @@ func TestStreamClient(t *testing.T) {
 		}
 	}
 
-	streamServers2 := []client.StreamUpstreamServer{
+	streamServers2 := []ngx.StreamUpstreamServer{
 		{
 			Server: "127.0.0.2:8003",
 		},
@@ -226,7 +256,7 @@ func TestStreamClient(t *testing.T) {
 
 	// updating with zero servers - removing
 
-	added, deleted, updated, err = c.UpdateStreamServers(streamUpstream, []client.StreamUpstreamServer{})
+	added, deleted, updated, err = c.UpdateStreamServers(streamUpstream, []ngx.StreamUpstreamServer{})
 
 	if err != nil {
 		t.Fatalf("Error when updating servers: %v", err)
@@ -255,7 +285,7 @@ func TestStreamClient(t *testing.T) {
 
 func TestStreamUpstreamServer(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
@@ -266,7 +296,7 @@ func TestStreamUpstreamServer(t *testing.T) {
 	backup := true
 	down := true
 
-	streamServer := client.StreamUpstreamServer{
+	streamServer := ngx.StreamUpstreamServer{
 		Server:      "127.0.0.1:2000",
 		MaxConns:    &maxConns,
 		MaxFails:    &maxFails,
@@ -295,7 +325,7 @@ func TestStreamUpstreamServer(t *testing.T) {
 	}
 
 	// remove stream upstream servers
-	_, _, _, err = c.UpdateStreamServers(streamUpstream, []client.StreamUpstreamServer{})
+	_, _, _, err = c.UpdateStreamServers(streamUpstream, []ngx.StreamUpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove servers: %v", err)
 	}
@@ -303,9 +333,9 @@ func TestStreamUpstreamServer(t *testing.T) {
 
 func TestClient(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
-		t.Fatalf("Error when creating a client: %v", err)
+		t.Fatalf("Error when creating a ngx: %v", err)
 	}
 
 	// test checking an upstream for existence
@@ -320,7 +350,7 @@ func TestClient(t *testing.T) {
 		t.Errorf("Nonexisting upstream exists")
 	}
 
-	server := client.UpstreamServer{
+	server := ngx.UpstreamServer{
 		Server: "127.0.0.1:8001",
 	}
 
@@ -351,7 +381,7 @@ func TestClient(t *testing.T) {
 	}
 
 	// test updating servers
-	servers1 := []client.UpstreamServer{
+	servers1 := []ngx.UpstreamServer{
 		{
 			Server: "127.0.0.2:8001",
 		},
@@ -470,7 +500,7 @@ func TestClient(t *testing.T) {
 		}
 	}
 
-	servers2 := []client.UpstreamServer{
+	servers2 := []ngx.UpstreamServer{
 		{
 			Server: "127.0.0.2:8003",
 		},
@@ -501,7 +531,7 @@ func TestClient(t *testing.T) {
 
 	// updating with zero servers - removing
 
-	added, deleted, updated, err = c.UpdateHTTPServers(upstream, []client.UpstreamServer{})
+	added, deleted, updated, err = c.UpdateHTTPServers(upstream, []ngx.UpstreamServer{})
 
 	if err != nil {
 		t.Fatalf("Error when updating servers: %v", err)
@@ -530,7 +560,7 @@ func TestClient(t *testing.T) {
 
 func TestUpstreamServer(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
@@ -541,7 +571,7 @@ func TestUpstreamServer(t *testing.T) {
 	backup := true
 	down := true
 
-	server := client.UpstreamServer{
+	server := ngx.UpstreamServer{
 		Server:      "127.0.0.1:2000",
 		MaxConns:    &maxConns,
 		MaxFails:    &maxFails,
@@ -571,7 +601,7 @@ func TestUpstreamServer(t *testing.T) {
 	}
 
 	// remove upstream servers
-	_, _, _, err = c.UpdateHTTPServers(upstream, []client.UpstreamServer{})
+	_, _, _, err = c.UpdateHTTPServers(upstream, []ngx.UpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove servers: %v", err)
 	}
@@ -579,12 +609,12 @@ func TestUpstreamServer(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	server := client.UpstreamServer{
+	server := ngx.UpstreamServer{
 		Server: "127.0.0.1:8080",
 	}
 	err = c.AddHTTPServer(upstream, server)
@@ -709,7 +739,7 @@ func TestStats(t *testing.T) {
 	}
 
 	// cleanup upstream servers
-	_, _, _, err = c.UpdateHTTPServers(upstream, []client.UpstreamServer{})
+	_, _, _, err = c.UpdateHTTPServers(upstream, []ngx.UpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove servers: %v", err)
 	}
@@ -717,16 +747,16 @@ func TestStats(t *testing.T) {
 
 func TestUpstreamServerDefaultParameters(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	server := client.UpstreamServer{
+	server := ngx.UpstreamServer{
 		Server: "127.0.0.1:2000",
 	}
 
-	expected := client.UpstreamServer{
+	expected := ngx.UpstreamServer{
 		ID:          0,
 		Server:      "127.0.0.1:2000",
 		MaxConns:    &defaultMaxConns,
@@ -759,7 +789,7 @@ func TestUpstreamServerDefaultParameters(t *testing.T) {
 	}
 
 	// remove upstream servers
-	_, _, _, err = c.UpdateHTTPServers(upstream, []client.UpstreamServer{})
+	_, _, _, err = c.UpdateHTTPServers(upstream, []ngx.UpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove servers: %v", err)
 	}
@@ -767,12 +797,12 @@ func TestUpstreamServerDefaultParameters(t *testing.T) {
 
 func TestStreamStats(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	server := client.StreamUpstreamServer{
+	server := ngx.StreamUpstreamServer{
 		Server: "127.0.0.1:8080",
 	}
 	err = c.AddStreamServer(streamUpstream, server)
@@ -781,7 +811,7 @@ func TestStreamStats(t *testing.T) {
 	}
 
 	// make connection so we have stream server zone stats - ignore response
-	_, err = net.Dial("tcp", helpers.GetStreamAddress())
+	_, err = net.Dial("tcp", GetStreamAddress())
 	if err != nil {
 		t.Errorf("Error making tcp connection: %v", err)
 	}
@@ -837,7 +867,7 @@ func TestStreamStats(t *testing.T) {
 	}
 
 	// cleanup stream upstream servers
-	_, _, _, err = c.UpdateStreamServers(streamUpstream, []client.StreamUpstreamServer{})
+	_, _, _, err = c.UpdateStreamServers(streamUpstream, []ngx.StreamUpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove stream servers: %v", err)
 	}
@@ -845,16 +875,16 @@ func TestStreamStats(t *testing.T) {
 
 func TestStreamUpstreamServerDefaultParameters(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	streamServer := client.StreamUpstreamServer{
+	streamServer := ngx.StreamUpstreamServer{
 		Server: "127.0.0.1:2000",
 	}
 
-	expected := client.StreamUpstreamServer{
+	expected := ngx.StreamUpstreamServer{
 		ID:          0,
 		Server:      "127.0.0.1:2000",
 		MaxConns:    &defaultMaxConns,
@@ -885,7 +915,7 @@ func TestStreamUpstreamServerDefaultParameters(t *testing.T) {
 	}
 
 	// cleanup stream upstream servers
-	_, _, _, err = c.UpdateStreamServers(streamUpstream, []client.StreamUpstreamServer{})
+	_, _, _, err = c.UpdateStreamServers(streamUpstream, []ngx.StreamUpstreamServer{})
 	if err != nil {
 		t.Errorf("Couldn't remove stream servers: %v", err)
 	}
@@ -894,7 +924,7 @@ func TestStreamUpstreamServerDefaultParameters(t *testing.T) {
 func TestKeyValue(t *testing.T) {
 	zoneName := "zone_one"
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
@@ -904,12 +934,12 @@ func TestKeyValue(t *testing.T) {
 		t.Errorf("Couldn't set keyvals: %v", err)
 	}
 
-	var keyValPairs client.KeyValPairs
+	var keyValPairs ngx.KeyValPairs
 	keyValPairs, err = c.GetKeyValPairs(zoneName)
 	if err != nil {
 		t.Errorf("Couldn't get keyvals for zone: %v, err: %v", zoneName, err)
 	}
-	expectedKeyValPairs := client.KeyValPairs{
+	expectedKeyValPairs := ngx.KeyValPairs{
 		"key1": "val1",
 	}
 	if !reflect.DeepEqual(expectedKeyValPairs, keyValPairs) {
@@ -920,7 +950,7 @@ func TestKeyValue(t *testing.T) {
 	if err != nil {
 		t.Errorf("Couldn't get keyvals, %v", err)
 	}
-	expectedKeyValPairsByZone := client.KeyValPairsByZone{
+	expectedKeyValPairsByZone := ngx.KeyValPairsByZone{
 		zoneName: expectedKeyValPairs,
 	}
 	if !reflect.DeepEqual(expectedKeyValPairsByZone, keyValuPairsByZone) {
@@ -958,7 +988,7 @@ func TestKeyValue(t *testing.T) {
 		t.Errorf("error deleting key")
 	}
 
-	expectedKeyValPairs2 := client.KeyValPairs{
+	expectedKeyValPairs2 := ngx.KeyValPairs{
 		"key2": "val2",
 	}
 	keyValPairs, err = c.GetKeyValPairs(zoneName)
@@ -992,7 +1022,7 @@ func TestKeyValue(t *testing.T) {
 func TestKeyValueStream(t *testing.T) {
 	zoneName := "zone_one_stream"
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
@@ -1006,7 +1036,7 @@ func TestKeyValueStream(t *testing.T) {
 	if err != nil {
 		t.Errorf("Couldn't get keyvals for zone: %v, err: %v", zoneName, err)
 	}
-	expectedKeyValPairs := client.KeyValPairs{
+	expectedKeyValPairs := ngx.KeyValPairs{
 		"key1": "val1",
 	}
 	if !reflect.DeepEqual(expectedKeyValPairs, keyValPairs) {
@@ -1017,9 +1047,9 @@ func TestKeyValueStream(t *testing.T) {
 	if err != nil {
 		t.Errorf("Couldn't get keyvals, %v", err)
 	}
-	expectedKeyValuePairsByZone := client.KeyValPairsByZone{
+	expectedKeyValuePairsByZone := ngx.KeyValPairsByZone{
 		zoneName:       expectedKeyValPairs,
-		streamZoneSync: client.KeyValPairs{},
+		streamZoneSync: ngx.KeyValPairs{},
 	}
 	if !reflect.DeepEqual(expectedKeyValuePairsByZone, keyValPairsByZone) {
 		t.Errorf("maps are not equal. expected: %+v, got: %+v", expectedKeyValuePairsByZone, keyValPairsByZone)
@@ -1060,7 +1090,7 @@ func TestKeyValueStream(t *testing.T) {
 	if err != nil {
 		t.Errorf("couldn't get keyval: %v", err)
 	}
-	expectedKeyValPairs2 := client.KeyValPairs{
+	expectedKeyValPairs2 := ngx.KeyValPairs{
 		"key2": "val2",
 	}
 	if !reflect.DeepEqual(keyValPairs, expectedKeyValPairs2) {
@@ -1088,12 +1118,12 @@ func TestKeyValueStream(t *testing.T) {
 }
 
 func TestStreamZoneSync(t *testing.T) {
-	c1, err := client.NewNginxClient(&http.Client{}, helpers.GetAPIEndpoint())
+	c1, err := ngx.NewNginxClient(&http.Client{}, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	c2, err := client.NewNginxClient(&http.Client{}, helpers.GetAPIEndpointOfHelper())
+	c2, err := ngx.NewNginxClient(&http.Client{}, GetAPIEndpointOfHelper())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
@@ -1187,7 +1217,7 @@ func TestStreamZoneSync(t *testing.T) {
 	}
 }
 
-func compareUpstreamServers(x []client.UpstreamServer, y []client.UpstreamServer) bool {
+func compareUpstreamServers(x []ngx.UpstreamServer, y []ngx.UpstreamServer) bool {
 	var xServers []string
 	for _, us := range x {
 		xServers = append(xServers, us.Server)
@@ -1200,7 +1230,7 @@ func compareUpstreamServers(x []client.UpstreamServer, y []client.UpstreamServer
 	return reflect.DeepEqual(xServers, yServers)
 }
 
-func compareStreamUpstreamServers(x []client.StreamUpstreamServer, y []client.StreamUpstreamServer) bool {
+func compareStreamUpstreamServers(x []ngx.StreamUpstreamServer, y []ngx.StreamUpstreamServer) bool {
 	var xServers []string
 	for _, us := range x {
 		xServers = append(xServers, us.Server)
@@ -1215,12 +1245,12 @@ func compareStreamUpstreamServers(x []client.StreamUpstreamServer, y []client.St
 
 func TestUpstreamServerWithDrain(t *testing.T) {
 	httpClient := &http.Client{}
-	c, err := client.NewNginxClient(httpClient, helpers.GetAPIEndpoint())
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
 	if err != nil {
 		t.Fatalf("Error connecting to nginx: %v", err)
 	}
 
-	server := client.UpstreamServer{
+	server := ngx.UpstreamServer{
 		ID:          0,
 		Server:      "127.0.0.1:9001",
 		MaxConns:    &defaultMaxConns,
@@ -1249,5 +1279,38 @@ func TestUpstreamServerWithDrain(t *testing.T) {
 
 	if !reflect.DeepEqual(server, servers[0]) {
 		t.Errorf("Expected: %v Got: %v", server, servers[0])
+	}
+}
+
+// TestStatsNoStream tests the peculiar behavior of getting Stream-related
+// stats from the API when there are no stream blocks in the config.
+// The API returns a special error code that we can use to determine if the API
+// is misconfigured or of the stream block is missing.
+func TestStatsNoStream(t *testing.T) {
+	httpClient := &http.Client{}
+	c, err := ngx.NewNginxClient(httpClient, GetAPIEndpoint())
+	if err != nil {
+		t.Fatalf("Error connecting to nginx: %v", err)
+	}
+
+	stats, err := c.GetStats()
+	if err != nil {
+		t.Errorf("Error getting stats: %v", err)
+	}
+
+	if stats.Connections.Accepted < 1 {
+		t.Errorf("Stats should report some connections: %v", stats.Connections)
+	}
+
+	if len(stats.StreamServerZones) != 0 {
+		t.Error("No stream block should result in no StreamServerZones")
+	}
+
+	if len(stats.StreamUpstreams) != 0 {
+		t.Error("No stream block should result in no StreamUpstreams")
+	}
+
+	if stats.StreamZoneSync != nil {
+		t.Error("No stream block should result in StreamZoneSync = `nil`")
 	}
 }

@@ -6,3 +6,9 @@
 .vscode
 
 dist
+
+**/*.crt
+**/*.key
+**/*.jwt
+docker/nginx-crt
+docker/nginx-key

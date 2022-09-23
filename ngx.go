@@ -1,4 +1,4 @@
-package client
+package ngx
 
 import (
 	"bytes"
@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 const (
@@ -553,7 +554,7 @@ func getAPIVersions(httpClient *http.Client, endpoint string) (*versions, error)
 		return nil, fmt.Errorf("%v is not accessible: expected %v response, got %v", endpoint, http.StatusOK, resp.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error while reading body of the response: %w", err)
 	}
@@ -582,7 +583,7 @@ func createResponseMismatchError(respBody io.ReadCloser) *internalError {
 }
 
 func readAPIErrorResponse(respBody io.ReadCloser) (*apiErrorResponse, error) {
-	body, err := ioutil.ReadAll(respBody)
+	body, err := io.ReadAll(respBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the response body: %w", err)
 	}
@@ -611,7 +612,6 @@ func (client *NginxClient) GetHTTPServers(upstream string) ([]UpstreamServer, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to get the HTTP servers of upstream %v: %w", upstream, err)
 	}
-
 	return servers, nil
 }
 
@@ -630,7 +630,6 @@ func (client *NginxClient) AddHTTPServer(upstream string, server UpstreamServer)
 	if err != nil {
 		return fmt.Errorf("failed to add %v server to %v upstream: %w", server.Server, upstream, err)
 	}
-
 	return nil
 }
 
@@ -728,7 +727,7 @@ func haveSameParameters(newServer UpstreamServer, serverNGX UpstreamServer) bool
 		newServer.Weight = &defaultWeight
 	}
 
-	return reflect.DeepEqual(newServer, serverNGX)
+	return cmp.Equal(newServer, serverNGX)
 }
 
 func determineUpdates(updatedServers []UpstreamServer, nginxServers []UpstreamServer) (toAdd []UpstreamServer, toRemove []UpstreamServer, toUpdate []UpstreamServer) {
@@ -812,7 +811,7 @@ func (client *NginxClient) get(path string, data interface{}) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read the response body: %w", err)
 	}

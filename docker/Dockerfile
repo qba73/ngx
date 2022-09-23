@@ -1,8 +1,6 @@
 # syntax=docker/dockerfile:1.4
 FROM debian:bullseye-slim
 
-LABEL maintainer="NGINX Docker Maintainers <integrations@nginx.com>"
-
 ARG NGINX_PLUS_VERSION
 
 # Install NGINX Plus
@@ -11,6 +9,7 @@ ARG NGINX_PLUS_VERSION
 RUN --mount=type=secret,id=nginx-repo.crt,dst=/etc/ssl/nginx/nginx-repo.crt,mode=0644 \
     --mount=type=secret,id=nginx-repo.key,dst=/etc/ssl/nginx/nginx-repo.key,mode=0644 \
     <<"eot" bash -euo pipefail
+    apt-get clean
     apt-get update
     apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg curl apt-transport-https
     curl -fsSL https://cs.nginx.com/static/keys/nginx_signing.key | gpg --dearmor > /etc/apt/trusted.gpg.d/nginx_signing.gpg
