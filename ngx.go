@@ -496,7 +496,7 @@ func WithHTTPClient(h *http.Client) option {
 		if h == nil {
 			return errors.New("nil http client")
 		}
-		c.HttpClient = h
+		c.HTTPClient = h
 		return nil
 	}
 }
@@ -671,7 +671,7 @@ func (c Client) get(path string, data interface{}) error {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending request, path: %s, %w", url, err)
 	}
@@ -711,7 +711,7 @@ func (c Client) post(path string, payload interface{}) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending POST request %v: %w", path, err)
 	}
@@ -737,7 +737,7 @@ func (c Client) delete(path string, expectedStatusCode int) error {
 		return fmt.Errorf("creating DELETE request: %w", err)
 	}
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending DELETE request: %w", err)
 	}
@@ -767,7 +767,7 @@ func (c Client) patch(path string, input interface{}, expectedStatusCode int) er
 		return fmt.Errorf("creating PATCH request: %w", err)
 	}
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending PATCH request: %w", err)
 	}
