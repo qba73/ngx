@@ -58,10 +58,10 @@ var (
 	defaultWeight      = 1
 )
 
-var baseUrl = "http://127.0.0.1:8080"
+var baseURL = "http://127.0.0.1:8080"
 
 func createNginxTestClient(t *testing.T) *ngx.Client {
-	c, err := ngx.NewClient(baseUrl)
+	c, err := ngx.NewClient(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

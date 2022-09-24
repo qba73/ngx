@@ -486,12 +486,12 @@ type HTTPLimitConnections map[string]LimitConnection
 // StreamLimitConnections represents limit connections related stats
 type StreamLimitConnections map[string]LimitConnection
 
-// Option helps to configure the Client with user specified parameters.
-type Option func(*Client) error
+// option helps to configure the Client with user specified parameters.
+type option func(*Client) error
 
-// WithHttpClient is a func option that configures NGINX Client
+// WithHTTPClient is a func option that configures NGINX Client
 // to use a custom HTTP Client.
-func WithHttpClient(h *http.Client) Option {
+func WithHTTPClient(h *http.Client) option {
 	return func(c *Client) error {
 		if h == nil {
 			return errors.New("nil http client")
@@ -502,7 +502,7 @@ func WithHttpClient(h *http.Client) Option {
 }
 
 // WithBaseURL is a func option that configures Client's base URL.
-func WithBaseURL(s string) Option {
+func WithBaseURL(s string) option {
 	return func(c *Client) error {
 		if s == "" {
 			return errors.New("empty base URL")
@@ -516,7 +516,7 @@ func WithBaseURL(s string) Option {
 // the Client talks to. It is user's responsibility to provide valid
 // version of the NGINX Plus that the Client talks to.
 // Valid versions are 4,5,6,7,8. The Client's default version is 8.
-func WithVersion(v int) Option {
+func WithVersion(v int) option {
 	return func(c *Client) error {
 		if !slices.Contains(supportedAPIVersions, v) {
 			return errors.New("unsupported NGINX API version")
@@ -530,17 +530,17 @@ func WithVersion(v int) Option {
 type Client struct {
 	Version    int
 	BaseURL    string
-	HttpClient *http.Client
+	HTTPClient *http.Client
 }
 
 // NewClient takes NGIXN base URL and constructs a new default client.
 // The client can be customized by passing functional options that
 // allow to configure client version and HTTP Client used by NGINX client.
-func NewClient(baseURL string, opts ...Option) (*Client, error) {
+func NewClient(baseURL string, opts ...option) (*Client, error) {
 	c := Client{
 		Version: DefaultAPIVersion,
 		BaseURL: baseURL,
-		HttpClient: &http.Client{
+		HTTPClient: &http.Client{
 			Timeout: time.Second * 5,
 		},
 	}
@@ -554,24 +554,24 @@ func NewClient(baseURL string, opts ...Option) (*Client, error) {
 
 // CheckIfUpstreamExists checks if the upstream exists in NGINX.
 // If the upstream doesn't exist, it returns the error.
-func (c *Client) CheckIfUpstreamExists(upstream string) error {
+func (c Client) CheckIfUpstreamExists(upstream string) error {
 	_, err := c.GetHTTPServers(upstream)
 	return err
 }
 
 // GetHTTPServers returns the servers of the upstream from NGINX.
-func (c *Client) GetHTTPServers(upstream string) ([]UpstreamServer, error) {
+func (c Client) GetHTTPServers(upstream string) ([]UpstreamServer, error) {
 	path := fmt.Sprintf("http/upstreams/%v/servers", upstream)
 	var servers []UpstreamServer
 	err := c.get(path, &servers)
 	if err != nil {
-		return nil, fmt.Errorf("retriving HTTP servers of upstream %v: %w", upstream, err)
+		return nil, fmt.Errorf("retrieving HTTP servers of upstream %v: %w", upstream, err)
 	}
 	return servers, nil
 }
 
 // AddHTTPServer adds the server to the upstream.
-func (c *Client) AddHTTPServer(upstream string, server UpstreamServer) error {
+func (c Client) AddHTTPServer(upstream string, server UpstreamServer) error {
 	id, err := c.getIDOfHTTPServer(upstream, server.Server)
 	if err != nil {
 		return fmt.Errorf("adding %v server to %v upstream: %w", server.Server, upstream, err)
@@ -588,7 +588,7 @@ func (c *Client) AddHTTPServer(upstream string, server UpstreamServer) error {
 }
 
 // DeleteHTTPServer the server from the upstream.
-func (c *Client) DeleteHTTPServer(upstream string, server string) error {
+func (c Client) DeleteHTTPServer(upstream string, server string) error {
 	id, err := c.getIDOfHTTPServer(upstream, server)
 	if err != nil {
 		return fmt.Errorf("removing %v server from  %v upstream: %w", server, upstream, err)
@@ -608,7 +608,7 @@ func (c *Client) DeleteHTTPServer(upstream string, server string) error {
 // Servers that are in the slice, but don't exist in NGINX will be added to NGINX.
 // Servers that aren't in the slice, but exist in NGINX, will be removed from NGINX.
 // Servers that are in the slice and exist in NGINX, but have different parameters, will be updated.
-func (c *Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer, error) {
+func (c Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer, error) {
 	serversInNginx, err := c.GetHTTPServers(upstream)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
@@ -647,42 +647,7 @@ func (c *Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([
 	return toAdd, toDelete, toUpdate, nil
 }
 
-// haveSameParameters checks if a given server has the same parameters as a server already present in NGINX. Order matters
-func haveSameParameters(newServer UpstreamServer, serverNGX UpstreamServer) bool {
-	newServer.ID = serverNGX.ID
-
-	if serverNGX.MaxConns != nil && newServer.MaxConns == nil {
-		newServer.MaxConns = &defaultMaxConns
-	}
-
-	if serverNGX.MaxFails != nil && newServer.MaxFails == nil {
-		newServer.MaxFails = &defaultMaxFails
-	}
-
-	if serverNGX.FailTimeout != "" && newServer.FailTimeout == "" {
-		newServer.FailTimeout = defaultFailTimeout
-	}
-
-	if serverNGX.SlowStart != "" && newServer.SlowStart == "" {
-		newServer.SlowStart = defaultSlowStart
-	}
-
-	if serverNGX.Backup != nil && newServer.Backup == nil {
-		newServer.Backup = &defaultBackup
-	}
-
-	if serverNGX.Down != nil && newServer.Down == nil {
-		newServer.Down = &defaultDown
-	}
-
-	if serverNGX.Weight != nil && newServer.Weight == nil {
-		newServer.Weight = &defaultWeight
-	}
-
-	return cmp.Equal(newServer, serverNGX)
-}
-
-func (c *Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
+func (c Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
 	servers, err := c.GetHTTPServers(upstream)
 	if err != nil {
 		return -1, fmt.Errorf("getting id of server %v of upstream %v: %w", name, upstream, err)
@@ -695,7 +660,7 @@ func (c *Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
 	return -1, nil
 }
 
-func (c *Client) get(path string, data interface{}) error {
+func (c Client) get(path string, data interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -729,7 +694,7 @@ func (c *Client) get(path string, data interface{}) error {
 	return nil
 }
 
-func (c *Client) post(path string, payload interface{}) error {
+func (c Client) post(path string, payload interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -737,7 +702,7 @@ func (c *Client) post(path string, payload interface{}) error {
 
 	jsonInput, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshalling input: %w", err)
+		return fmt.Errorf("marshaling input: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonInput))
@@ -761,7 +726,7 @@ func (c *Client) post(path string, payload interface{}) error {
 	return nil
 }
 
-func (c *Client) delete(path string, expectedStatusCode int) error {
+func (c Client) delete(path string, expectedStatusCode int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -786,7 +751,7 @@ func (c *Client) delete(path string, expectedStatusCode int) error {
 	return nil
 }
 
-func (c *Client) patch(path string, input interface{}, expectedStatusCode int) error {
+func (c Client) patch(path string, input interface{}, expectedStatusCode int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -794,7 +759,7 @@ func (c *Client) patch(path string, input interface{}, expectedStatusCode int) e
 
 	jsonInput, err := json.Marshal(input)
 	if err != nil {
-		return fmt.Errorf("marshalling input: %w", err)
+		return fmt.Errorf("marshaling input: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, bytes.NewBuffer(jsonInput))
@@ -817,17 +782,17 @@ func (c *Client) patch(path string, input interface{}, expectedStatusCode int) e
 }
 
 // CheckIfStreamUpstreamExists checks if the stream upstream exists in NGINX. If the upstream doesn't exist, it returns the error.
-func (c *Client) CheckIfStreamUpstreamExists(upstream string) error {
+func (c Client) CheckIfStreamUpstreamExists(upstream string) error {
 	_, err := c.GetStreamServers(upstream)
 	return err
 }
 
 // GetStreamServers returns the stream servers of the upstream from NGINX.
-func (client *Client) GetStreamServers(upstream string) ([]StreamUpstreamServer, error) {
+func (c Client) GetStreamServers(upstream string) ([]StreamUpstreamServer, error) {
 	path := fmt.Sprintf("stream/upstreams/%v/servers", upstream)
 
 	var servers []StreamUpstreamServer
-	err := client.get(path, &servers)
+	err := c.get(path, &servers)
 	if err != nil {
 		return nil, fmt.Errorf("getting stream servers of upstream server %v: %w", upstream, err)
 	}
@@ -835,7 +800,7 @@ func (client *Client) GetStreamServers(upstream string) ([]StreamUpstreamServer,
 }
 
 // AddStreamServer adds the stream server to the upstream.
-func (c *Client) AddStreamServer(upstream string, server StreamUpstreamServer) error {
+func (c Client) AddStreamServer(upstream string, server StreamUpstreamServer) error {
 	id, err := c.getIDOfStreamServer(upstream, server.Server)
 	if err != nil {
 		return fmt.Errorf("adding %v stream server to %v upstream: %w", server.Server, upstream, err)
@@ -852,7 +817,7 @@ func (c *Client) AddStreamServer(upstream string, server StreamUpstreamServer) e
 }
 
 // DeleteStreamServer the server from the upstream.
-func (c *Client) DeleteStreamServer(upstream string, server string) error {
+func (c Client) DeleteStreamServer(upstream string, server string) error {
 	id, err := c.getIDOfStreamServer(upstream, server)
 	if err != nil {
 		return fmt.Errorf("removing %v stream server from  %v upstream: %w", server, upstream, err)
@@ -873,7 +838,7 @@ func (c *Client) DeleteStreamServer(upstream string, server string) error {
 // Servers that are in the slice, but don't exist in NGINX will be added to NGINX.
 // Servers that aren't in the slice, but exist in NGINX, will be removed from NGINX.
 // Servers that are in the slice and exist in NGINX, but have different parameters, will be updated.
-func (c *Client) UpdateStreamServers(upstream string, servers []StreamUpstreamServer) ([]StreamUpstreamServer, []StreamUpstreamServer, []StreamUpstreamServer, error) {
+func (c Client) UpdateStreamServers(upstream string, servers []StreamUpstreamServer) ([]StreamUpstreamServer, []StreamUpstreamServer, []StreamUpstreamServer, error) {
 	serversInNginx, err := c.GetStreamServers(upstream)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("updating stream servers of %v upstream: %w", upstream, err)
@@ -911,7 +876,7 @@ func (c *Client) UpdateStreamServers(upstream string, servers []StreamUpstreamSe
 	return toAdd, toDelete, toUpdate, nil
 }
 
-func (c *Client) getIDOfStreamServer(upstream string, name string) (int, error) {
+func (c Client) getIDOfStreamServer(upstream string, name string) (int, error) {
 	servers, err := c.GetStreamServers(upstream)
 	if err != nil {
 		return -1, fmt.Errorf("getting id of stream server %v of upstream %v: %w", name, upstream, err)
@@ -924,8 +889,9 @@ func (c *Client) getIDOfStreamServer(upstream string, name string) (int, error) 
 	return -1, nil
 }
 
-// GetStats gets process, slab, connection, request, ssl, zone, stream zone, upstream and stream upstream related stats from the NGINX Plus API.
-func (c *Client) GetStats() (_ Stats, err error) {
+// GetStats gets process, slab, connection, request, ssl, zone, stream zone,
+// upstream and stream upstream related stats from the NGINX Plus API.
+func (c Client) GetStats() (_ Stats, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("getting stats: %w", err)
@@ -1039,7 +1005,7 @@ func (c *Client) GetStats() (_ Stats, err error) {
 }
 
 // GetNginxInfo returns Nginx stats.
-func (c *Client) GetNginxInfo() (NginxInfo, error) {
+func (c Client) GetNginxInfo() (NginxInfo, error) {
 	var info NginxInfo
 	err := c.get("nginx", &info)
 	if err != nil {
@@ -1049,7 +1015,7 @@ func (c *Client) GetNginxInfo() (NginxInfo, error) {
 }
 
 // GetCaches returns Cache stats
-func (c *Client) GetCaches() (Caches, error) {
+func (c Client) GetCaches() (Caches, error) {
 	var caches Caches
 	err := c.get("http/caches", &caches)
 	if err != nil {
@@ -1059,7 +1025,7 @@ func (c *Client) GetCaches() (Caches, error) {
 }
 
 // GetSlabs returns Slabs stats.
-func (c *Client) GetSlabs() (Slabs, error) {
+func (c Client) GetSlabs() (Slabs, error) {
 	var slabs Slabs
 	err := c.get("slabs", &slabs)
 	if err != nil {
@@ -1069,7 +1035,7 @@ func (c *Client) GetSlabs() (Slabs, error) {
 }
 
 // GetConnections returns Connections stats.
-func (c *Client) GetConnections() (Connections, error) {
+func (c Client) GetConnections() (Connections, error) {
 	var cons Connections
 	err := c.get("connections", &cons)
 	if err != nil {
@@ -1079,7 +1045,7 @@ func (c *Client) GetConnections() (Connections, error) {
 }
 
 // GetHTTPRequests returns http/requests stats.
-func (c *Client) GetHTTPRequests() (HTTPRequests, error) {
+func (c Client) GetHTTPRequests() (HTTPRequests, error) {
 	var requests HTTPRequests
 	if err := c.get("http/requests", &requests); err != nil {
 		return HTTPRequests{}, fmt.Errorf("getting http requests: %w", err)
@@ -1088,7 +1054,7 @@ func (c *Client) GetHTTPRequests() (HTTPRequests, error) {
 }
 
 // GetSSL returns SSL stats.
-func (c *Client) GetSSL() (SSL, error) {
+func (c Client) GetSSL() (SSL, error) {
 	var ssl SSL
 	if err := c.get("ssl", &ssl); err != nil {
 		return SSL{}, fmt.Errorf("getting ssl: %w", err)
@@ -1106,7 +1072,7 @@ func (c *Client) GetServerZones() (ServerZones, error) {
 }
 
 // GetStreamServerZones returns stream/server_zones stats.
-func (c *Client) GetStreamServerZones() (StreamServerZones, error) {
+func (c Client) GetStreamServerZones() (StreamServerZones, error) {
 	var zones StreamServerZones
 	err := c.get("stream/server_zones", &zones)
 	if err != nil {
@@ -1122,7 +1088,7 @@ func (c *Client) GetStreamServerZones() (StreamServerZones, error) {
 }
 
 // GetUpstreams returns http/upstreams stats.
-func (c *Client) GetUpstreams() (Upstreams, error) {
+func (c Client) GetUpstreams() (Upstreams, error) {
 	var upstreams Upstreams
 	err := c.get("http/upstreams", &upstreams)
 	if err != nil {
@@ -1132,7 +1098,7 @@ func (c *Client) GetUpstreams() (Upstreams, error) {
 }
 
 // GetStreamUpstreams returns stream/upstreams stats.
-func (c *Client) GetStreamUpstreams() (StreamUpstreams, error) {
+func (c Client) GetStreamUpstreams() (StreamUpstreams, error) {
 	var upstreams StreamUpstreams
 	err := c.get("stream/upstreams", &upstreams)
 	if err != nil {
@@ -1148,7 +1114,7 @@ func (c *Client) GetStreamUpstreams() (StreamUpstreams, error) {
 }
 
 // GetStreamZoneSync returns stream/zone_sync stats.
-func (c *Client) GetStreamZoneSync() (StreamZoneSync, error) {
+func (c Client) GetStreamZoneSync() (StreamZoneSync, error) {
 	var streamZoneSync StreamZoneSync
 	err := c.get("stream/zone_sync", &streamZoneSync)
 	if err != nil {
@@ -1164,7 +1130,7 @@ func (c *Client) GetStreamZoneSync() (StreamZoneSync, error) {
 }
 
 // GetLocationZones returns http/location_zones stats.
-func (c *Client) GetLocationZones() (LocationZones, error) {
+func (c Client) GetLocationZones() (LocationZones, error) {
 	var locationZones LocationZones
 	if c.Version < 5 {
 		return LocationZones{}, nil
@@ -1176,7 +1142,7 @@ func (c *Client) GetLocationZones() (LocationZones, error) {
 }
 
 // GetResolvers returns Resolvers stats.
-func (c *Client) GetResolvers() (Resolvers, error) {
+func (c Client) GetResolvers() (Resolvers, error) {
 	var resolvers Resolvers
 	if c.Version < 5 {
 		return Resolvers{}, nil
@@ -1188,7 +1154,7 @@ func (c *Client) GetResolvers() (Resolvers, error) {
 }
 
 // GetProcesses returns Processes stats.
-func (c *Client) GetProcesses() (Processes, error) {
+func (c Client) GetProcesses() (Processes, error) {
 	var processes Processes
 	err := c.get("processes", &processes)
 	if err != nil {
@@ -1204,16 +1170,16 @@ type KeyValPairs map[string]string
 type KeyValPairsByZone map[string]KeyValPairs
 
 // GetKeyValPairs fetches key/value pairs for a given HTTP zone.
-func (c *Client) GetKeyValPairs(zone string) (KeyValPairs, error) {
+func (c Client) GetKeyValPairs(zone string) (KeyValPairs, error) {
 	return c.getKeyValPairs(zone, httpContext)
 }
 
 // GetStreamKeyValPairs fetches key/value pairs for a given Stream zone.
-func (c *Client) GetStreamKeyValPairs(zone string) (KeyValPairs, error) {
+func (c Client) GetStreamKeyValPairs(zone string) (KeyValPairs, error) {
 	return c.getKeyValPairs(zone, streamContext)
 }
 
-func (c *Client) getKeyValPairs(zone string, stream bool) (KeyValPairs, error) {
+func (c Client) getKeyValPairs(zone string, stream bool) (KeyValPairs, error) {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1230,16 +1196,16 @@ func (c *Client) getKeyValPairs(zone string, stream bool) (KeyValPairs, error) {
 }
 
 // GetAllKeyValPairs fetches all key/value pairs for all HTTP zones.
-func (c *Client) GetAllKeyValPairs() (KeyValPairsByZone, error) {
+func (c Client) GetAllKeyValPairs() (KeyValPairsByZone, error) {
 	return c.getAllKeyValPairs(httpContext)
 }
 
 // GetAllStreamKeyValPairs fetches all key/value pairs for all Stream zones.
-func (c *Client) GetAllStreamKeyValPairs() (KeyValPairsByZone, error) {
+func (c Client) GetAllStreamKeyValPairs() (KeyValPairsByZone, error) {
 	return c.getAllKeyValPairs(streamContext)
 }
 
-func (c *Client) getAllKeyValPairs(stream bool) (KeyValPairsByZone, error) {
+func (c Client) getAllKeyValPairs(stream bool) (KeyValPairsByZone, error) {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1254,16 +1220,16 @@ func (c *Client) getAllKeyValPairs(stream bool) (KeyValPairsByZone, error) {
 }
 
 // AddKeyValPair adds a new key/value pair to a given HTTP zone.
-func (c *Client) AddKeyValPair(zone string, key string, val string) error {
+func (c Client) AddKeyValPair(zone string, key string, val string) error {
 	return c.addKeyValPair(zone, key, val, httpContext)
 }
 
 // AddStreamKeyValPair adds a new key/value pair to a given Stream zone.
-func (c *Client) AddStreamKeyValPair(zone string, key string, val string) error {
+func (c Client) AddStreamKeyValPair(zone string, key string, val string) error {
 	return c.addKeyValPair(zone, key, val, streamContext)
 }
 
-func (c *Client) addKeyValPair(zone string, key string, val string, stream bool) error {
+func (c Client) addKeyValPair(zone string, key string, val string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1280,16 +1246,16 @@ func (c *Client) addKeyValPair(zone string, key string, val string, stream bool)
 }
 
 // ModifyKeyValPair modifies the value of an existing key in a given HTTP zone.
-func (c *Client) ModifyKeyValPair(zone string, key string, val string) error {
+func (c Client) ModifyKeyValPair(zone string, key string, val string) error {
 	return c.modifyKeyValPair(zone, key, val, httpContext)
 }
 
 // Modify10KeyValPair modifies the value of an existing key in a given Stream zone.
-func (c *Client) ModifyStreamKeyValPair(zone string, key string, val string) error {
+func (c Client) ModifyStreamKeyValPair(zone string, key string, val string) error {
 	return c.modifyKeyValPair(zone, key, val, streamContext)
 }
 
-func (c *Client) modifyKeyValPair(zone string, key string, val string, stream bool) error {
+func (c Client) modifyKeyValPair(zone string, key string, val string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1307,7 +1273,7 @@ func (c *Client) modifyKeyValPair(zone string, key string, val string, stream bo
 }
 
 // DeleteKeyValuePair deletes the key/value pair for a key in a given HTTP zone.
-func (c *Client) DeleteKeyValuePair(zone string, key string) error {
+func (c Client) DeleteKeyValuePair(zone string, key string) error {
 	return c.deleteKeyValuePair(zone, key, httpContext)
 }
 
@@ -1318,7 +1284,7 @@ func (c *Client) DeleteStreamKeyValuePair(zone string, key string) error {
 
 // To delete a key/value pair you set the value to null via the API,
 // then NGINX+ will delete the key.
-func (c *Client) deleteKeyValuePair(zone string, key string, stream bool) error {
+func (c Client) deleteKeyValuePair(zone string, key string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1339,16 +1305,16 @@ func (c *Client) deleteKeyValuePair(zone string, key string, stream bool) error 
 }
 
 // DeleteKeyValPairs deletes all the key-value pairs in a given HTTP zone.
-func (c *Client) DeleteKeyValPairs(zone string) error {
+func (c Client) DeleteKeyValPairs(zone string) error {
 	return c.deleteKeyValPairs(zone, httpContext)
 }
 
 // DeleteStreamKeyValPairs deletes all the key-value pairs in a given Stream zone.
-func (c *Client) DeleteStreamKeyValPairs(zone string) error {
+func (c Client) DeleteStreamKeyValPairs(zone string) error {
 	return c.deleteKeyValPairs(zone, streamContext)
 }
 
-func (c *Client) deleteKeyValPairs(zone string, stream bool) error {
+func (c Client) deleteKeyValPairs(zone string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1364,7 +1330,7 @@ func (c *Client) deleteKeyValPairs(zone string, stream bool) error {
 }
 
 // UpdateHTTPServer updates the server of the upstream.
-func (c *Client) UpdateHTTPServer(upstream string, server UpstreamServer) error {
+func (c Client) UpdateHTTPServer(upstream string, server UpstreamServer) error {
 	path := fmt.Sprintf("http/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
 	if err := c.patch(path, &server, http.StatusOK); err != nil {
@@ -1374,7 +1340,7 @@ func (c *Client) UpdateHTTPServer(upstream string, server UpstreamServer) error 
 }
 
 // UpdateStreamServer updates the stream server of the upstream.
-func (c *Client) UpdateStreamServer(upstream string, server StreamUpstreamServer) error {
+func (c Client) UpdateStreamServer(upstream string, server StreamUpstreamServer) error {
 	path := fmt.Sprintf("stream/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
 	if err := c.patch(path, &server, http.StatusOK); err != nil {
@@ -1384,7 +1350,7 @@ func (c *Client) UpdateStreamServer(upstream string, server StreamUpstreamServer
 }
 
 // GetHTTPLimitReqs returns http/limit_reqs stats.
-func (c *Client) GetHTTPLimitReqs() (HTTPLimitRequests, error) {
+func (c Client) GetHTTPLimitReqs() (HTTPLimitRequests, error) {
 	var limitReqs HTTPLimitRequests
 	if c.Version < 6 {
 		return HTTPLimitRequests{}, nil
@@ -1396,7 +1362,7 @@ func (c *Client) GetHTTPLimitReqs() (HTTPLimitRequests, error) {
 }
 
 // GetHTTPConnectionsLimit returns http/limit_conns stats.
-func (c *Client) GetHTTPConnectionsLimit() (HTTPLimitConnections, error) {
+func (c Client) GetHTTPConnectionsLimit() (HTTPLimitConnections, error) {
 	var limitConns HTTPLimitConnections
 	if c.Version < 6 {
 		return HTTPLimitConnections{}, nil
@@ -1408,7 +1374,7 @@ func (c *Client) GetHTTPConnectionsLimit() (HTTPLimitConnections, error) {
 }
 
 // GetStreamConnectionsLimit returns stream/limit_conns stats.
-func (c *Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
+func (c Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
 	var limitConns StreamLimitConnections
 	if c.Version < 6 {
 		return StreamLimitConnections{}, nil
@@ -1424,6 +1390,41 @@ func (c *Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
 		return nil, fmt.Errorf("failed to get stream connections limit: %w", err)
 	}
 	return limitConns, nil
+}
+
+// haveSameParameters checks if a given server has the same parameters as a server already present in NGINX. Order matters
+func haveSameParameters(newServer UpstreamServer, serverNGX UpstreamServer) bool {
+	newServer.ID = serverNGX.ID
+
+	if serverNGX.MaxConns != nil && newServer.MaxConns == nil {
+		newServer.MaxConns = &defaultMaxConns
+	}
+
+	if serverNGX.MaxFails != nil && newServer.MaxFails == nil {
+		newServer.MaxFails = &defaultMaxFails
+	}
+
+	if serverNGX.FailTimeout != "" && newServer.FailTimeout == "" {
+		newServer.FailTimeout = defaultFailTimeout
+	}
+
+	if serverNGX.SlowStart != "" && newServer.SlowStart == "" {
+		newServer.SlowStart = defaultSlowStart
+	}
+
+	if serverNGX.Backup != nil && newServer.Backup == nil {
+		newServer.Backup = &defaultBackup
+	}
+
+	if serverNGX.Down != nil && newServer.Down == nil {
+		newServer.Down = &defaultDown
+	}
+
+	if serverNGX.Weight != nil && newServer.Weight == nil {
+		newServer.Weight = &defaultWeight
+	}
+
+	return cmp.Equal(newServer, serverNGX)
 }
 
 func addPortToServer(server string) string {
