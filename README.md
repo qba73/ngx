@@ -64,7 +64,6 @@ Or use ```earthly```
 ```bash
 $ earthly +checks
 ```
-Example output"
 
 <details>
   <summary>Click to see output</summary>
