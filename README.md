@@ -28,17 +28,23 @@ Install [gotestdox](https://github.com/bitfield/gotestdox)
 ```bash
 go install github.com/bitfield/gotestdox/cmd/gotestdox@latest
 ```
-Run internal tests
+Run tests
 ```bash
-$ gotestdox -run BuildsAddress
+$ gotestdox
 github.com/qba73/ngx:
+ ✔ Calculates server updates on valid input (0.00s)
+ ✔ Calculates stream server updates on valid input (0.00s)
+ ✔ Determines upstream servers configuration equality (0.00s)
+ ✔ Determines upstream stream servers configuration equality (0.00s)
  ✔ Builds address on valid input with host and port (0.00s)
+ ✔ Builds address on valid input with IPV4 address and without port (0.00s)
+ ✔ Builds address on valid input with address and without port (0.00s)
  ✔ Builds address on valid input with unix socket (0.00s)
  ✔ Builds address on valid input with IPV6 and port (0.00s)
  ✔ Builds address on valid input with IPV4 and port (0.00s)
- ✔ Builds address on valid input with IPV4 address and without port (0.00s)
- ✔ Builds address on valid input with address and without port (0.00s)
  ✔ Builds address on valid input with IPV6 address and without port (0.00s)
+ ✔ Client retrives info about running NGINX instance (0.00s)
+ ✔ Client retrives NGINX status on valid parameters (0.00s)
 ```
 
 Prerequisites:
