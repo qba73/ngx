@@ -128,14 +128,14 @@ type Stats struct {
 
 // NginxInfo contains general information about NGINX Plus.
 type NginxInfo struct {
-	Version         string
-	Build           string
-	Address         string
-	Generation      uint64
-	LoadTimestamp   string `json:"load_timestamp"`
-	Timestamp       string
-	ProcessID       uint64 `json:"pid"`
-	ParentProcessID uint64 `json:"ppid"`
+	Version         string `json:"version,omitempty"`
+	Build           string `json:"build,omitempty"`
+	Address         string `json:"address,omitempty"`
+	Generation      uint64 `json:"generation,omitempty"`
+	LoadTimestamp   string `json:"load_timestamp,omitempty"`
+	Timestamp       string `json:"timestamp,omitempty"`
+	ProcessID       uint64 `json:"pid,omitempty"`
+	ParentProcessID uint64 `json:"ppid,omitempty"`
 }
 
 // Caches is a map of cache stats by cache zone
@@ -501,17 +501,6 @@ func WithHTTPClient(h *http.Client) option {
 	}
 }
 
-// WithBaseURL is a func option that configures Client's base URL.
-func WithBaseURL(s string) option {
-	return func(c *Client) error {
-		if s == "" {
-			return errors.New("empty base URL")
-		}
-		c.BaseURL = s
-		return nil
-	}
-}
-
 // WithVersion is a func option that configures version of the NGINX API
 // the Client talks to. It is user's responsibility to provide valid
 // version of the NGINX Plus that the Client talks to.
@@ -550,6 +539,38 @@ func NewClient(baseURL string, opts ...option) (*Client, error) {
 		}
 	}
 	return &c, nil
+}
+
+// GetNginxInfo returns status of nginx running instance.
+// Returned status includes nginx version, build name, address,
+// number of configuration reloads, IDs of master and worker processes.
+func (c Client) GetNginxInfo() (NginxInfo, error) {
+	var info NginxInfo
+	err := c.get("nginx", &info)
+	if err != nil {
+		return NginxInfo{}, fmt.Errorf("getting NGINX info: %w", err)
+	}
+	return info, nil
+}
+
+// Returns nginx version, build name, address, number of configuration reloads,
+// IDs of master and worker processes.
+// Limits which fields of nginx running instance will be output.
+//
+// Available fields: "version", "build", "address", "generation",
+// "load_timestamp", "timestamp", "pid", "ppid".
+func (c Client) GetNGINXStatus(fields ...string) (NginxInfo, error) {
+	if len(fields) == 0 {
+		return c.GetNginxInfo()
+	}
+	if err := isNGINXStatusFieldValid(fields); err != nil {
+		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
+	}
+	var info NginxInfo
+	if err := c.get("nginx?fields=version", &info); err != nil {
+		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
+	}
+	return info, nil
 }
 
 // CheckIfUpstreamExists checks if the upstream exists in NGINX.
@@ -621,7 +642,7 @@ func (c Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]
 		formattedServers = append(formattedServers, server)
 	}
 
-	toAdd, toDelete, toUpdate := determineUpdates(formattedServers, serversInNginx)
+	toAdd, toDelete, toUpdate := determineServerUpdates(formattedServers, serversInNginx)
 
 	for _, server := range toAdd {
 		err := c.AddHTTPServer(upstream, server)
@@ -660,128 +681,8 @@ func (c Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
 	return -1, nil
 }
 
-func (c Client) get(path string, data interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
-	}
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending request, path: %s, %w", url, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"expected %v response, got %v",
-			http.StatusOK, resp.StatusCode))
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("reading response body: %w", err)
-	}
-
-	err = json.Unmarshal(body, data)
-	if err != nil {
-		return fmt.Errorf("unmarshaling response: %w", err)
-	}
-	return nil
-}
-
-func (c Client) post(path string, payload interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
-
-	jsonInput, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshaling input: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonInput))
-	if err != nil {
-		return fmt.Errorf("creating POST request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending POST request %v: %w", path, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"expected %v response, got %v",
-			http.StatusCreated, resp.StatusCode))
-	}
-
-	return nil
-}
-
-func (c Client) delete(path string, expectedStatusCode int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		return fmt.Errorf("creating DELETE request: %w", err)
-	}
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending DELETE request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatusCode {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"failed to complete delete request: expected %v response, got %v",
-			expectedStatusCode, resp.StatusCode))
-	}
-	return nil
-}
-
-func (c Client) patch(path string, input interface{}, expectedStatusCode int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
-
-	jsonInput, err := json.Marshal(input)
-	if err != nil {
-		return fmt.Errorf("marshaling input: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, bytes.NewBuffer(jsonInput))
-	if err != nil {
-		return fmt.Errorf("creating PATCH request: %w", err)
-	}
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending PATCH request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatusCode {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"failed to complete patch request: expected %v response, got %v",
-			expectedStatusCode, resp.StatusCode))
-	}
-	return nil
-}
-
-// CheckIfStreamUpstreamExists checks if the stream upstream exists in NGINX. If the upstream doesn't exist, it returns the error.
+// CheckIfStreamUpstreamExists checks if the stream upstream exists in NGINX.
+// If the upstream doesn't exist, it returns the error.
 func (c Client) CheckIfStreamUpstreamExists(upstream string) error {
 	_, err := c.GetStreamServers(upstream)
 	return err
@@ -1004,14 +905,14 @@ func (c Client) GetStats() (_ Stats, err error) {
 	}, nil
 }
 
-// GetNginxInfo returns Nginx stats.
-func (c Client) GetNginxInfo() (NginxInfo, error) {
-	var info NginxInfo
-	err := c.get("nginx", &info)
-	if err != nil {
-		return NginxInfo{}, fmt.Errorf("getting NGINX info: %w", err)
+func isNGINXStatusFieldValid(fields []string) error {
+	allowedFields := []string{"version", "build", "address", "generation", "load_timestamp", "timestamp", "pid", "ppid"}
+	for _, field := range fields {
+		if !slices.Contains(allowedFields, field) {
+			return fmt.Errorf("not supported field name: %s", field)
+		}
 	}
-	return info, nil
+	return nil
 }
 
 // GetCaches returns Cache stats
@@ -1334,7 +1235,7 @@ func (c Client) UpdateHTTPServer(upstream string, server UpstreamServer) error {
 	path := fmt.Sprintf("http/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
 	if err := c.patch(path, &server, http.StatusOK); err != nil {
-		return fmt.Errorf("updating %v server to %v upstream: %w", server.Server, upstream, err)
+		return fmt.Errorf("ngx: updating %v server to %v upstream: %w", server.Server, upstream, err)
 	}
 	return nil
 }
@@ -1344,7 +1245,7 @@ func (c Client) UpdateStreamServer(upstream string, server StreamUpstreamServer)
 	path := fmt.Sprintf("stream/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
 	if err := c.patch(path, &server, http.StatusOK); err != nil {
-		return fmt.Errorf("updating %v stream server to %v upstream: %w", server.Server, upstream, err)
+		return fmt.Errorf("ngx: updating %v stream server to %v upstream: %w", server.Server, upstream, err)
 	}
 	return nil
 }
@@ -1356,7 +1257,7 @@ func (c Client) GetHTTPLimitReqs() (HTTPLimitRequests, error) {
 		return HTTPLimitRequests{}, nil
 	}
 	if err := c.get("http/limit_reqs", &limitReqs); err != nil {
-		return nil, fmt.Errorf("getting http limit requests: %w", err)
+		return nil, fmt.Errorf("ngx: getting http limit requests: %w", err)
 	}
 	return limitReqs, nil
 }
@@ -1368,7 +1269,7 @@ func (c Client) GetHTTPConnectionsLimit() (HTTPLimitConnections, error) {
 		return HTTPLimitConnections{}, nil
 	}
 	if err := c.get("http/limit_conns", &limitConns); err != nil {
-		return nil, fmt.Errorf("getting http connections limit: %w", err)
+		return nil, fmt.Errorf("ngx: getting http connections limit: %w", err)
 	}
 	return limitConns, nil
 }
@@ -1387,12 +1288,134 @@ func (c Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
 				return limitConns, nil
 			}
 		}
-		return nil, fmt.Errorf("failed to get stream connections limit: %w", err)
+		return nil, fmt.Errorf("ngx: getting stream connections limit: %w", err)
 	}
 	return limitConns, nil
 }
 
-// haveSameParameters checks if a given server has the same parameters as a server already present in NGINX. Order matters
+func (c Client) get(path string, data interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending request, path: %s, %w", url, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
+			"expected %v response, got %v",
+			http.StatusOK, resp.StatusCode))
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response body: %w", err)
+	}
+
+	err = json.Unmarshal(body, data)
+	if err != nil {
+		return fmt.Errorf("unmarshaling response: %w", err)
+	}
+	return nil
+}
+
+func (c Client) post(path string, payload interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
+
+	jsonInput, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshaling input: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonInput))
+	if err != nil {
+		return fmt.Errorf("creating POST request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending POST request %v: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
+			"expected %v response, got %v",
+			http.StatusCreated, resp.StatusCode))
+	}
+
+	return nil
+}
+
+func (c Client) delete(path string, expectedStatusCode int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return fmt.Errorf("creating DELETE request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending DELETE request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != expectedStatusCode {
+		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
+			"failed to complete delete request: expected %v response, got %v",
+			expectedStatusCode, resp.StatusCode))
+	}
+	return nil
+}
+
+func (c Client) patch(path string, input interface{}, expectedStatusCode int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
+
+	jsonInput, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("marshaling input: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, bytes.NewBuffer(jsonInput))
+	if err != nil {
+		return fmt.Errorf("creating PATCH request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending PATCH request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != expectedStatusCode {
+		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
+			"failed to complete patch request: expected %v response, got %v",
+			expectedStatusCode, resp.StatusCode))
+	}
+	return nil
+}
+
+// haveSameParameters checks if a given server has the same parameters
+// as a server already present in NGINX. Order matters.
 func haveSameParameters(newServer UpstreamServer, serverNGX UpstreamServer) bool {
 	newServer.ID = serverNGX.ID
 
@@ -1498,7 +1521,7 @@ func getAPIVersions(httpClient *http.Client, endpoint string) ([]int, error) {
 	return vers, nil
 }
 
-func determineUpdates(updatedServers []UpstreamServer, nginxServers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer) {
+func determineServerUpdates(updatedServers []UpstreamServer, nginxServers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer) {
 	var toAdd, toRemove, toUpdate []UpstreamServer
 
 	for _, server := range updatedServers {

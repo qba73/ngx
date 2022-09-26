@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestDetermineUpdates(t *testing.T) {
+func TestCalculatesServerUpdatesOnValidInput(t *testing.T) {
 	maxConns := 1
 	tests := []struct {
 		updated          []UpstreamServer
@@ -152,7 +152,7 @@ func TestDetermineUpdates(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		toAdd, toDelete, toUpdate := determineUpdates(test.updated, test.nginx)
+		toAdd, toDelete, toUpdate := determineServerUpdates(test.updated, test.nginx)
 
 		if !cmp.Equal(toAdd, test.expectedToAdd) {
 			t.Error(cmp.Diff(toAdd, test.expectedToAdd))
@@ -169,7 +169,7 @@ func TestDetermineUpdates(t *testing.T) {
 	}
 }
 
-func TestStreamDetermineUpdates(t *testing.T) {
+func TestCalculatesStreamServerUpdatesOnValidInput(t *testing.T) {
 	maxConns := 1
 	tests := []struct {
 		updated          []StreamUpstreamServer
@@ -401,7 +401,7 @@ func TestBuildsAddressOnValidInputWithIPV6AddressAndWithoutPort(t *testing.T) {
 	}
 }
 
-func TestHaveSameParameters(t *testing.T) {
+func TestDeterminesUpstreamServersConfigurationEquality(t *testing.T) {
 	tests := []struct {
 		server    UpstreamServer
 		serverNGX UpstreamServer
@@ -480,7 +480,7 @@ func TestHaveSameParameters(t *testing.T) {
 	}
 }
 
-func TestHaveSameParametersForStream(t *testing.T) {
+func TestDeterminesUpstreamStreamServersConfigurationEquality(t *testing.T) {
 	tests := []struct {
 		server    StreamUpstreamServer
 		serverNGX StreamUpstreamServer
