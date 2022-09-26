@@ -82,7 +82,7 @@ github.com/qba73/ngx:
  ✔ Client retrives NGINX status on valid parameters (0.00s)
 ```
 
-Or use ```earthly``` 
+Or use [**earthly**](https://docs.earthly.dev)
 
 ```bash
 $ earthly +checks
