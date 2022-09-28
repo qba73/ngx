@@ -67,21 +67,32 @@ go install github.com/bitfield/gotestdox/cmd/gotestdox@latest
 Run tests
 ```bash
 $ gotestdox
-github.com/qba73/ngx:
- ✔ Calculates server updates on valid input (0.00s)
- ✔ Calculates stream server updates on valid input (0.00s)
- ✔ Determines upstream servers configuration equality (0.00s)
- ✔ Determines upstream stream servers configuration equality (0.00s)
- ✔ Builds address on valid input with host and port (0.00s)
- ✔ Builds address on valid input with IPV4 address and without port (0.00s)
- ✔ Builds address on valid input with address and without port (0.00s)
- ✔ Builds address on valid input with unix socket (0.00s)
- ✔ Builds address on valid input with IPV6 and port (0.00s)
- ✔ Builds address on valid input with IPV4 and port (0.00s)
- ✔ Builds address on valid input with IPV6 address and without port (0.00s)
+```
+<details>
+    <summary>Click to see test run results</summary>
+
+```bash
+$ gotestdox
+ ✔ Check server updates is valid on valid input (0.00s)
+ ✔ Check stream server updates is valid on valid input (0.00s)
+ ✔ Upstream servers config is valid on valid input (0.00s)
+ ✔ Upstream stream servers configuration is valid on valid input (0.00s)
+ ✔ Server address is valid on valid input with host and port (0.00s)
+ ✔ Server address is valid on valid input with IPV6 address and without port (0.00s)
+ ✔ Server address is valid on valid input with IPV4 address and without port (0.00s)
+ ✔ Server address is valid on valid input with address and without port (0.00s)
+ ✔ Server address is valid on valid input with unix socket (0.00s)
+ ✔ Server address is valid on valid input with IPV6 and port (0.00s)
+ ✔ Server address is valid on valid input with IPV4 and port (0.00s)
+ ✔ NGINX server status is valid on valid input request params (0.00s)
+ ✔ Request get NGINXURL is valid on valid fields (0.00s)
+ ✔ Get NGINX status errors on invalid request param (0.00s)
+ ✔ Client uses valid request path on valid request params (0.00s)
  ✔ Client retrives info about running NGINX instance (0.00s)
  ✔ Client retrives NGINX status on valid parameters (0.00s)
 ```
+</details>
+
 
 Or use [**earthly**](https://docs.earthly.dev)
 
