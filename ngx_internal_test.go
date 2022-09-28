@@ -1,12 +1,15 @@
 package ngx
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestCalculatesServerUpdatesOnValidInput(t *testing.T) {
+func TestCheckServerUpdatesIsValidOnValidInput(t *testing.T) {
 	maxConns := 1
 	tests := []struct {
 		updated          []UpstreamServer
@@ -169,7 +172,7 @@ func TestCalculatesServerUpdatesOnValidInput(t *testing.T) {
 	}
 }
 
-func TestCalculatesStreamServerUpdatesOnValidInput(t *testing.T) {
+func TestCheckStreamServerUpdatesIsValidOnValidInput(t *testing.T) {
 	maxConns := 1
 	tests := []struct {
 		updated          []StreamUpstreamServer
@@ -331,7 +334,7 @@ func TestCalculatesStreamServerUpdatesOnValidInput(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithHostAndPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithHostAndPort(t *testing.T) {
 	t.Parallel()
 	input := "example.com:8080"
 	want := "example.com:8080"
@@ -341,7 +344,7 @@ func TestBuildsAddressOnValidInputWithHostAndPort(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithIPV4AndPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithIPV4AndPort(t *testing.T) {
 	t.Parallel()
 	input := "127.0.0.1:8080"
 	want := "127.0.0.1:8080"
@@ -351,7 +354,7 @@ func TestBuildsAddressOnValidInputWithIPV4AndPort(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithIPV6AndPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithIPV6AndPort(t *testing.T) {
 	t.Parallel()
 	input := "[::]:8080"
 	want := "[::]:8080"
@@ -361,7 +364,7 @@ func TestBuildsAddressOnValidInputWithIPV6AndPort(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithUnixSocket(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithUnixSocket(t *testing.T) {
 	t.Parallel()
 	input := "unix:/path/to/socket"
 	want := "unix:/path/to/socket"
@@ -371,7 +374,7 @@ func TestBuildsAddressOnValidInputWithUnixSocket(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithAddressAndWithoutPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithAddressAndWithoutPort(t *testing.T) {
 	t.Parallel()
 	input := "example.com"
 	want := "example.com:80"
@@ -381,7 +384,7 @@ func TestBuildsAddressOnValidInputWithAddressAndWithoutPort(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithIPV4AddressAndWithoutPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithIPV4AddressAndWithoutPort(t *testing.T) {
 	t.Parallel()
 	input := "127.0.0.1"
 	want := "127.0.0.1:80"
@@ -391,7 +394,7 @@ func TestBuildsAddressOnValidInputWithIPV4AddressAndWithoutPort(t *testing.T) {
 	}
 }
 
-func TestBuildsAddressOnValidInputWithIPV6AddressAndWithoutPort(t *testing.T) {
+func TestServerAddressIsValidOnValidInputWithIPV6AddressAndWithoutPort(t *testing.T) {
 	t.Parallel()
 	input := "[::]"
 	want := "[::]:80"
@@ -401,7 +404,7 @@ func TestBuildsAddressOnValidInputWithIPV6AddressAndWithoutPort(t *testing.T) {
 	}
 }
 
-func TestDeterminesUpstreamServersConfigurationEquality(t *testing.T) {
+func TestUpstreamServersConfigIsValidOnValidInput(t *testing.T) {
 	tests := []struct {
 		server    UpstreamServer
 		serverNGX UpstreamServer
@@ -480,7 +483,7 @@ func TestDeterminesUpstreamServersConfigurationEquality(t *testing.T) {
 	}
 }
 
-func TestDeterminesUpstreamStreamServersConfigurationEquality(t *testing.T) {
+func TestUpstreamStreamServersConfigurationIsValidOnValidInput(t *testing.T) {
 	tests := []struct {
 		server    StreamUpstreamServer
 		serverNGX StreamUpstreamServer
@@ -588,4 +591,71 @@ func compareStreamUpstreamServers(x []StreamUpstreamServer, y []StreamUpstreamSe
 		yServers = append(yServers, us.Server)
 	}
 	return cmp.Equal(xServers, yServers)
+}
+
+func TestNGINXServerStatusIsValidOnValidInputRequestParams(t *testing.T) {
+	t.Parallel()
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"version":"1.21.6"}`)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/8/nginx?fields=version", nil)
+
+	w := httptest.NewRecorder()
+	handler(w, r)
+
+	resp := w.Result()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	want := `{"version":"1.21.6"}`
+	got := string(body)
+
+	if want != got {
+		t.Error(cmp.Diff(want, got))
+	}
+
+	if want != got {
+		t.Error(cmp.Diff(want, got))
+	}
+
+}
+
+func TestRequestGetNGINXURLIsValidOnValidFields(t *testing.T) {
+	t.Parallel()
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"version":"1.21.6"}`)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/8/nginx?fields=version", nil)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
+	w := httptest.NewRecorder()
+	handler(w, r)
+
+	resp := w.Result()
+
+	t.Log(resp.Header)
+
+	t.Logf("%+v", r.RequestURI)
+	t.Log("request path:")
+
+	//body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	// want := `{"version":"1.21.6"}`
+	// got := string(body)
+
+	// if want != got {
+	// 	t.Error(cmp.Diff(want, got))
+	// }
+
+	// if want != got {
+	// 	t.Error(cmp.Diff(want, got))
+	// }
+
 }

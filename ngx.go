@@ -567,7 +567,9 @@ func (c Client) GetNGINXStatus(fields ...string) (NginxInfo, error) {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
 	}
 	var info NginxInfo
-	if err := c.get("nginx?fields=version", &info); err != nil {
+
+	path := fmt.Sprintf("nginx?fields=%s", strings.Join(fields, ","))
+	if err := c.get(path, &info); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
 	}
 	return info, nil

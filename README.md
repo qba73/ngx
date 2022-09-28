@@ -5,7 +5,7 @@
 
 # ngx
 
-```ngx``` is a Go client library for NGINX Plus API. The project was initially based on the fork of the open source NGINX Plus client API.
+```ngx``` is a Go client library for NGINX Plus API. The project was initially based on the fork of the [open source NGINX Plus client](https://github.com/nginxinc/nginx-plus-go-client) API.
 
 The library works against versions 4 to 8 of the NGINX Plus API. The table below shows the version of NGINX Plus where the API was first introduced.
 

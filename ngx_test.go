@@ -1,9 +1,10 @@
 package ngx_test
 
 import (
-	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -11,11 +12,57 @@ import (
 	"github.com/qba73/ngx"
 )
 
-func newTestServer(responseBody string, t *testing.T) *httptest.Server {
+func newTestServer(respBody string, t *testing.T) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(rw, responseBody)
+		t.Log(r.URL.Path)
+		_, err := io.WriteString(rw, respBody)
+		if err != nil {
+			t.Fatal()
+		}
 	}))
 	return ts
+}
+
+func newTestServerWithPathValidator(respBody string, wantURI string, t *testing.T) *httptest.Server {
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		gotReqURI := r.RequestURI
+		verifyURIs(wantURI, gotReqURI, t)
+		_, err := io.WriteString(rw, respBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}))
+	return ts
+}
+
+// verifyURIs is a test helper function that verifies if provided URIs are equal.
+func verifyURIs(wanturi, goturi string, t *testing.T) {
+	wantU, err := url.Parse(wanturi)
+	if err != nil {
+		t.Fatalf("error parsing URL %q, %v", wanturi, err)
+	}
+	gotU, err := url.Parse(goturi)
+	if err != nil {
+		t.Fatalf("error parsing URL %q, %v", wanturi, err)
+	}
+	// Verify if paths of both URIs are the same.
+	if wantU.Path != gotU.Path {
+		t.Fatalf("want %q, got %q", wantU.Path, gotU.Path)
+	}
+
+	wantQuery, err := url.ParseQuery(wantU.RawQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotQuery, err := url.ParseQuery(gotU.RawQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify if query parameters match in both, got and want URIs.
+	if !cmp.Equal(wantQuery, gotQuery) {
+		t.Fatalf("URIs are not equal, \n%s", cmp.Diff(wantQuery, gotQuery))
+	}
 }
 
 func newNginxTestClient(baseURL string, t *testing.T) *ngx.Client {
@@ -72,6 +119,40 @@ func TestClientRetrivesNGINXStatusOnValidParameters(t *testing.T) {
 
 	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestClientUsesValidRequestPathOnValidRequestParams(t *testing.T) {
+	t.Parallel()
+	ts := newTestServerWithPathValidator(responseGetNGINXStatusVersion, "/8/nginx?fields=version", t)
+	defer ts.Close()
+
+	c := newNginxTestClient(ts.URL, t)
+
+	want := ngx.NginxInfo{
+		Version: "1.21.6",
+	}
+
+	got, err := c.GetNGINXStatus("version")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestGetNGINXStatusErrorsOnInvalidRequestParam(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(responseGetNGINXStatusVersion, t)
+	defer ts.Close()
+
+	c := newNginxTestClient(ts.URL, t)
+
+	_, err := c.GetNGINXStatus("bogus_request_param")
+	if err == nil {
+		t.Fatal("want err on passing bogus request param")
 	}
 }
 
