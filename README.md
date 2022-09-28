@@ -9,6 +9,9 @@
 
 The library works against versions 4 to 8 of the NGINX Plus API. The table below shows the version of NGINX Plus where the API was first introduced.
 
+<details>
+    <summary>Click to see API and NGINX Plus version table</summary>
+
 | API version | NGINX Plus version |
 |-------------|--------------------|
 | 4 | R18 |
@@ -16,6 +19,8 @@ The library works against versions 4 to 8 of the NGINX Plus API. The table below
 | 6 | R20 |
 | 7 | R25 |
 | 8 | R27 |
+
+</details>
 
 ## Using the Go library
 
