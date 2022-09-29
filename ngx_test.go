@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -85,8 +86,8 @@ func TestClientRetrivesInfoAboutRunningNGINXInstance(t *testing.T) {
 		Build:           "nginx-plus-r27",
 		Address:         "",
 		Generation:      1,
-		LoadTimestamp:   "",
-		Timestamp:       "",
+		LoadTimestamp:   time.Time{},
+		Timestamp:       time.Time{},
 		ProcessID:       8,
 		ParentProcessID: 1,
 	}

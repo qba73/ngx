@@ -128,14 +128,72 @@ type Stats struct {
 
 // NginxInfo contains general information about NGINX Plus.
 type NginxInfo struct {
-	Version         string `json:"version,omitempty"`
-	Build           string `json:"build,omitempty"`
-	Address         string `json:"address,omitempty"`
-	Generation      uint64 `json:"generation,omitempty"`
-	LoadTimestamp   string `json:"load_timestamp,omitempty"`
-	Timestamp       string `json:"timestamp,omitempty"`
-	ProcessID       uint64 `json:"pid,omitempty"`
-	ParentProcessID uint64 `json:"ppid,omitempty"`
+	Version         string
+	Build           string
+	Address         string
+	Generation      int
+	LoadTimestamp   time.Time
+	Timestamp       time.Time
+	ProcessID       int
+	ParentProcessID int
+}
+
+type respNGINXInfo struct {
+	Version       string    `json:"version"`
+	Build         string    `json:"build"`
+	Address       string    `json:"address"`
+	Generation    int       `json:"generation"`
+	LoadTimestamp time.Time `json:"load_timestamp"`
+	Timestamp     time.Time `json:"timestamp"`
+	Pid           int       `json:"pid"`
+	Ppid          int       `json:"ppid"`
+}
+
+type respGetRequests struct {
+	Total   int `json:"total"`
+	Current int `json:"current"`
+}
+
+type respGetCaches struct {
+	HTTPCache struct {
+		Size    int  `json:"size"`
+		MaxSize int  `json:"max_size"`
+		Cold    bool `json:"cold"`
+		Hit     struct {
+			Responses int `json:"responses"`
+			Bytes     int `json:"bytes"`
+		} `json:"hit"`
+		Stale struct {
+			Responses int `json:"responses"`
+			Bytes     int `json:"bytes"`
+		} `json:"stale"`
+		Updating struct {
+			Responses int `json:"responses"`
+			Bytes     int `json:"bytes"`
+		} `json:"updating"`
+		Revalidated struct {
+			Responses int `json:"responses"`
+			Bytes     int `json:"bytes"`
+		} `json:"revalidated"`
+		Miss struct {
+			Responses        int `json:"responses"`
+			Bytes            int `json:"bytes"`
+			ResponsesWritten int `json:"responses_written"`
+			BytesWritten     int `json:"bytes_written"`
+		} `json:"miss"`
+		Expired struct {
+			Responses        int `json:"responses"`
+			Bytes            int `json:"bytes"`
+			ResponsesWritten int `json:"responses_written"`
+			BytesWritten     int `json:"bytes_written"`
+		} `json:"expired"`
+		Bypass struct {
+			Responses        int `json:"responses"`
+			Bytes            int `json:"bytes"`
+			ResponsesWritten int `json:"responses_written"`
+			BytesWritten     int `json:"bytes_written"`
+		} `json:"bypass"`
+	} `json:"http_cache"`
 }
 
 // Caches is a map of cache stats by cache zone
@@ -458,7 +516,7 @@ type ResolverResponses struct {
 
 // Processes represents processes related stats
 type Processes struct {
-	Respawned int64
+	Respawned int
 }
 
 // HTTPLimitRequest represents HTTP Requests Rate Limiting
@@ -545,10 +603,20 @@ func NewClient(baseURL string, opts ...option) (*Client, error) {
 // Returned status includes nginx version, build name, address,
 // number of configuration reloads, IDs of master and worker processes.
 func (c Client) GetNginxInfo() (NginxInfo, error) {
-	var info NginxInfo
-	err := c.get("nginx", &info)
+	var resp respNGINXInfo
+	err := c.get("nginx", &resp)
 	if err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX info: %w", err)
+	}
+	info := NginxInfo{
+		Version:         resp.Version,
+		Build:           resp.Build,
+		Address:         resp.Address,
+		Generation:      resp.Generation,
+		LoadTimestamp:   resp.LoadTimestamp,
+		Timestamp:       resp.Timestamp,
+		ProcessID:       resp.Pid,
+		ParentProcessID: resp.Ppid,
 	}
 	return info, nil
 }
@@ -566,11 +634,20 @@ func (c Client) GetNGINXStatus(fields ...string) (NginxInfo, error) {
 	if err := isNGINXStatusFieldValid(fields); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
 	}
-	var info NginxInfo
-
 	path := fmt.Sprintf("nginx?fields=%s", strings.Join(fields, ","))
-	if err := c.get(path, &info); err != nil {
+	var resp respNGINXInfo
+	if err := c.get(path, &resp); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
+	}
+	info := NginxInfo{
+		Version:         resp.Version,
+		Build:           resp.Build,
+		Address:         resp.Address,
+		Generation:      resp.Generation,
+		LoadTimestamp:   resp.LoadTimestamp,
+		Timestamp:       resp.Timestamp,
+		ProcessID:       resp.Pid,
+		ParentProcessID: resp.Ppid,
 	}
 	return info, nil
 }
@@ -1058,12 +1135,17 @@ func (c Client) GetResolvers() (Resolvers, error) {
 
 // GetProcesses returns Processes stats.
 func (c Client) GetProcesses() (Processes, error) {
-	var processes Processes
-	err := c.get("processes", &processes)
-	if err != nil {
-		return Processes{}, fmt.Errorf("getting processes: %w", err)
+	var respProcesses struct {
+		Respawned int `json:"respawned"`
 	}
-	return processes, nil
+	err := c.get("processes", &respProcesses)
+	if err != nil {
+		return Processes{}, fmt.Errorf("ngx: getting processes: %w", err)
+	}
+	p := Processes{
+		Respawned: respProcesses.Respawned,
+	}
+	return p, nil
 }
 
 // KeyValPairs are the key-value pairs stored in a zone.
