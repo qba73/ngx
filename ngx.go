@@ -138,7 +138,7 @@ type NginxInfo struct {
 	ParentProcessID int
 }
 
-type respNGINXInfo struct {
+type responseNGINXInfo struct {
 	Version       string    `json:"version"`
 	Build         string    `json:"build"`
 	Address       string    `json:"address"`
@@ -585,11 +585,9 @@ type Client struct {
 // allow to configure client version and HTTP Client used by NGINX client.
 func NewClient(baseURL string, opts ...option) (*Client, error) {
 	c := Client{
-		Version: DefaultAPIVersion,
-		BaseURL: baseURL,
-		HTTPClient: &http.Client{
-			Timeout: time.Second * 5,
-		},
+		Version:    DefaultAPIVersion,
+		BaseURL:    baseURL,
+		HTTPClient: &http.Client{},
 	}
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
@@ -602,9 +600,9 @@ func NewClient(baseURL string, opts ...option) (*Client, error) {
 // GetNginxInfo returns status of nginx running instance.
 // Returned status includes nginx version, build name, address,
 // number of configuration reloads, IDs of master and worker processes.
-func (c Client) GetNginxInfo() (NginxInfo, error) {
-	var resp respNGINXInfo
-	err := c.get("nginx", &resp)
+func (c Client) GetNginxInfo(ctx context.Context) (NginxInfo, error) {
+	var resp responseNGINXInfo
+	err := c.get(ctx, "nginx", &resp)
 	if err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX info: %w", err)
 	}
@@ -627,16 +625,16 @@ func (c Client) GetNginxInfo() (NginxInfo, error) {
 //
 // Available fields: "version", "build", "address", "generation",
 // "load_timestamp", "timestamp", "pid", "ppid".
-func (c Client) GetNGINXStatus(fields ...string) (NginxInfo, error) {
+func (c Client) GetNGINXStatus(ctx context.Context, fields ...string) (NginxInfo, error) {
 	if len(fields) == 0 {
-		return c.GetNginxInfo()
+		return c.GetNginxInfo(ctx)
 	}
 	if err := isNGINXStatusFieldValid(fields); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
 	}
 	path := fmt.Sprintf("nginx?fields=%s", strings.Join(fields, ","))
-	var resp respNGINXInfo
-	if err := c.get(path, &resp); err != nil {
+	var resp responseNGINXInfo
+	if err := c.get(ctx, path, &resp); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX status: %w", err)
 	}
 	info := NginxInfo{
@@ -654,16 +652,16 @@ func (c Client) GetNGINXStatus(fields ...string) (NginxInfo, error) {
 
 // CheckIfUpstreamExists checks if the upstream exists in NGINX.
 // If the upstream doesn't exist, it returns the error.
-func (c Client) CheckIfUpstreamExists(upstream string) error {
-	_, err := c.GetHTTPServers(upstream)
+func (c Client) CheckIfUpstreamExists(ctx context.Context, upstream string) error {
+	_, err := c.GetHTTPServers(ctx, upstream)
 	return err
 }
 
 // GetHTTPServers returns the servers of the upstream from NGINX.
-func (c Client) GetHTTPServers(upstream string) ([]UpstreamServer, error) {
+func (c Client) GetHTTPServers(ctx context.Context, upstream string) ([]UpstreamServer, error) {
 	path := fmt.Sprintf("http/upstreams/%v/servers", upstream)
 	var servers []UpstreamServer
-	err := c.get(path, &servers)
+	err := c.get(ctx, path, &servers)
 	if err != nil {
 		return nil, fmt.Errorf("retrieving HTTP servers of upstream %v: %w", upstream, err)
 	}
@@ -671,8 +669,8 @@ func (c Client) GetHTTPServers(upstream string) ([]UpstreamServer, error) {
 }
 
 // AddHTTPServer adds the server to the upstream.
-func (c Client) AddHTTPServer(upstream string, server UpstreamServer) error {
-	id, err := c.getIDOfHTTPServer(upstream, server.Server)
+func (c Client) AddHTTPServer(ctx context.Context, upstream string, server UpstreamServer) error {
+	id, err := c.getIDOfHTTPServer(ctx, upstream, server.Server)
 	if err != nil {
 		return fmt.Errorf("adding %v server to %v upstream: %w", server.Server, upstream, err)
 	}
@@ -680,7 +678,7 @@ func (c Client) AddHTTPServer(upstream string, server UpstreamServer) error {
 		return fmt.Errorf("adding %v server to %v upstream: server already exists", server.Server, upstream)
 	}
 	path := fmt.Sprintf("http/upstreams/%v/servers/", upstream)
-	err = c.post(path, server)
+	err = c.post(ctx, path, server)
 	if err != nil {
 		return fmt.Errorf("adding %v server to %v upstream: %w", server.Server, upstream, err)
 	}
@@ -688,8 +686,8 @@ func (c Client) AddHTTPServer(upstream string, server UpstreamServer) error {
 }
 
 // DeleteHTTPServer the server from the upstream.
-func (c Client) DeleteHTTPServer(upstream string, server string) error {
-	id, err := c.getIDOfHTTPServer(upstream, server)
+func (c Client) DeleteHTTPServer(ctx context.Context, upstream string, server string) error {
+	id, err := c.getIDOfHTTPServer(ctx, upstream, server)
 	if err != nil {
 		return fmt.Errorf("removing %v server from  %v upstream: %w", server, upstream, err)
 	}
@@ -697,7 +695,7 @@ func (c Client) DeleteHTTPServer(upstream string, server string) error {
 		return fmt.Errorf("removing %v server from %v upstream: server doesn't exist", server, upstream)
 	}
 	path := fmt.Sprintf("http/upstreams/%v/servers/%v", upstream, id)
-	err = c.delete(path, http.StatusOK)
+	err = c.delete(ctx, path, http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("removing %v server from %v upstream: %w", server, upstream, err)
 	}
@@ -708,8 +706,8 @@ func (c Client) DeleteHTTPServer(upstream string, server string) error {
 // Servers that are in the slice, but don't exist in NGINX will be added to NGINX.
 // Servers that aren't in the slice, but exist in NGINX, will be removed from NGINX.
 // Servers that are in the slice and exist in NGINX, but have different parameters, will be updated.
-func (c Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer, error) {
-	serversInNginx, err := c.GetHTTPServers(upstream)
+func (c Client) UpdateHTTPServers(ctx context.Context, upstream string, servers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer, error) {
+	serversInNginx, err := c.GetHTTPServers(ctx, upstream)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
 	}
@@ -724,21 +722,21 @@ func (c Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]
 	toAdd, toDelete, toUpdate := determineServerUpdates(formattedServers, serversInNginx)
 
 	for _, server := range toAdd {
-		err := c.AddHTTPServer(upstream, server)
+		err := c.AddHTTPServer(ctx, upstream, server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
 		}
 	}
 
 	for _, server := range toDelete {
-		err := c.DeleteHTTPServer(upstream, server.Server)
+		err := c.DeleteHTTPServer(ctx, upstream, server.Server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
 		}
 	}
 
 	for _, server := range toUpdate {
-		err := c.UpdateHTTPServer(upstream, server)
+		err := c.UpdateHTTPServer(ctx, upstream, server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
 		}
@@ -747,8 +745,8 @@ func (c Client) UpdateHTTPServers(upstream string, servers []UpstreamServer) ([]
 	return toAdd, toDelete, toUpdate, nil
 }
 
-func (c Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
-	servers, err := c.GetHTTPServers(upstream)
+func (c Client) getIDOfHTTPServer(ctx context.Context, upstream string, name string) (int, error) {
+	servers, err := c.GetHTTPServers(ctx, upstream)
 	if err != nil {
 		return -1, fmt.Errorf("getting id of server %v of upstream %v: %w", name, upstream, err)
 	}
@@ -762,17 +760,16 @@ func (c Client) getIDOfHTTPServer(upstream string, name string) (int, error) {
 
 // CheckIfStreamUpstreamExists checks if the stream upstream exists in NGINX.
 // If the upstream doesn't exist, it returns the error.
-func (c Client) CheckIfStreamUpstreamExists(upstream string) error {
-	_, err := c.GetStreamServers(upstream)
+func (c Client) CheckIfStreamUpstreamExists(ctx context.Context, upstream string) error {
+	_, err := c.GetStreamServers(ctx, upstream)
 	return err
 }
 
 // GetStreamServers returns the stream servers of the upstream from NGINX.
-func (c Client) GetStreamServers(upstream string) ([]StreamUpstreamServer, error) {
+func (c Client) GetStreamServers(ctx context.Context, upstream string) ([]StreamUpstreamServer, error) {
 	path := fmt.Sprintf("stream/upstreams/%v/servers", upstream)
-
 	var servers []StreamUpstreamServer
-	err := c.get(path, &servers)
+	err := c.get(ctx, path, &servers)
 	if err != nil {
 		return nil, fmt.Errorf("getting stream servers of upstream server %v: %w", upstream, err)
 	}
@@ -780,8 +777,8 @@ func (c Client) GetStreamServers(upstream string) ([]StreamUpstreamServer, error
 }
 
 // AddStreamServer adds the stream server to the upstream.
-func (c Client) AddStreamServer(upstream string, server StreamUpstreamServer) error {
-	id, err := c.getIDOfStreamServer(upstream, server.Server)
+func (c Client) AddStreamServer(ctx context.Context, upstream string, server StreamUpstreamServer) error {
+	id, err := c.getIDOfStreamServer(ctx, upstream, server.Server)
 	if err != nil {
 		return fmt.Errorf("adding %v stream server to %v upstream: %w", server.Server, upstream, err)
 	}
@@ -789,7 +786,7 @@ func (c Client) AddStreamServer(upstream string, server StreamUpstreamServer) er
 		return fmt.Errorf("adding %v stream server to %v upstream: server already exists", server.Server, upstream)
 	}
 	path := fmt.Sprintf("stream/upstreams/%v/servers/", upstream)
-	err = c.post(path, &server)
+	err = c.post(ctx, path, &server)
 	if err != nil {
 		return fmt.Errorf("adding %v stream server to %v upstream: %w", server.Server, upstream, err)
 	}
@@ -797,8 +794,8 @@ func (c Client) AddStreamServer(upstream string, server StreamUpstreamServer) er
 }
 
 // DeleteStreamServer the server from the upstream.
-func (c Client) DeleteStreamServer(upstream string, server string) error {
-	id, err := c.getIDOfStreamServer(upstream, server)
+func (c Client) DeleteStreamServer(ctx context.Context, upstream string, server string) error {
+	id, err := c.getIDOfStreamServer(ctx, upstream, server)
 	if err != nil {
 		return fmt.Errorf("removing %v stream server from  %v upstream: %w", server, upstream, err)
 	}
@@ -807,7 +804,7 @@ func (c Client) DeleteStreamServer(upstream string, server string) error {
 	}
 
 	path := fmt.Sprintf("stream/upstreams/%v/servers/%v", upstream, id)
-	err = c.delete(path, http.StatusOK)
+	err = c.delete(ctx, path, http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("removing %v stream server from %v upstream: %w", server, upstream, err)
 	}
@@ -818,8 +815,8 @@ func (c Client) DeleteStreamServer(upstream string, server string) error {
 // Servers that are in the slice, but don't exist in NGINX will be added to NGINX.
 // Servers that aren't in the slice, but exist in NGINX, will be removed from NGINX.
 // Servers that are in the slice and exist in NGINX, but have different parameters, will be updated.
-func (c Client) UpdateStreamServers(upstream string, servers []StreamUpstreamServer) ([]StreamUpstreamServer, []StreamUpstreamServer, []StreamUpstreamServer, error) {
-	serversInNginx, err := c.GetStreamServers(upstream)
+func (c Client) UpdateStreamServers(ctx context.Context, upstream string, servers []StreamUpstreamServer) ([]StreamUpstreamServer, []StreamUpstreamServer, []StreamUpstreamServer, error) {
+	serversInNginx, err := c.GetStreamServers(ctx, upstream)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("updating stream servers of %v upstream: %w", upstream, err)
 	}
@@ -833,21 +830,21 @@ func (c Client) UpdateStreamServers(upstream string, servers []StreamUpstreamSer
 	toAdd, toDelete, toUpdate := determineStreamUpdates(formattedServers, serversInNginx)
 
 	for _, server := range toAdd {
-		err := c.AddStreamServer(upstream, server)
+		err := c.AddStreamServer(ctx, upstream, server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating stream servers of %v upstream: %w", upstream, err)
 		}
 	}
 
 	for _, server := range toDelete {
-		err := c.DeleteStreamServer(upstream, server.Server)
+		err := c.DeleteStreamServer(ctx, upstream, server.Server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating stream servers of %v upstream: %w", upstream, err)
 		}
 	}
 
 	for _, server := range toUpdate {
-		err := c.UpdateStreamServer(upstream, server)
+		err := c.UpdateStreamServer(ctx, upstream, server)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("updating stream servers of %v upstream: %w", upstream, err)
 		}
@@ -856,8 +853,8 @@ func (c Client) UpdateStreamServers(upstream string, servers []StreamUpstreamSer
 	return toAdd, toDelete, toUpdate, nil
 }
 
-func (c Client) getIDOfStreamServer(upstream string, name string) (int, error) {
-	servers, err := c.GetStreamServers(upstream)
+func (c Client) getIDOfStreamServer(ctx context.Context, upstream string, name string) (int, error) {
+	servers, err := c.GetStreamServers(ctx, upstream)
 	if err != nil {
 		return -1, fmt.Errorf("getting id of stream server %v of upstream %v: %w", name, upstream, err)
 	}
@@ -871,94 +868,94 @@ func (c Client) getIDOfStreamServer(upstream string, name string) (int, error) {
 
 // GetStats gets process, slab, connection, request, ssl, zone, stream zone,
 // upstream and stream upstream related stats from the NGINX Plus API.
-func (c Client) GetStats() (_ Stats, err error) {
+func (c Client) GetStats(ctx context.Context) (_ Stats, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("getting stats: %w", err)
 		}
 	}()
 
-	info, err := c.GetNginxInfo()
+	info, err := c.GetNginxInfo(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	caches, err := c.GetCaches()
+	caches, err := c.GetCaches(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	processes, err := c.GetProcesses()
+	processes, err := c.GetProcesses(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	slabs, err := c.GetSlabs()
+	slabs, err := c.GetSlabs(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	cons, err := c.GetConnections()
+	cons, err := c.GetConnections(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	requests, err := c.GetHTTPRequests()
+	requests, err := c.GetHTTPRequests(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	ssl, err := c.GetSSL()
+	ssl, err := c.GetSSL(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	zones, err := c.GetServerZones()
+	zones, err := c.GetServerZones(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	upstreams, err := c.GetUpstreams()
+	upstreams, err := c.GetUpstreams(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	streamZones, err := c.GetStreamServerZones()
+	streamZones, err := c.GetStreamServerZones(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	streamUpstreams, err := c.GetStreamUpstreams()
+	streamUpstreams, err := c.GetStreamUpstreams(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	streamZoneSync, err := c.GetStreamZoneSync()
+	streamZoneSync, err := c.GetStreamZoneSync(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	locationZones, err := c.GetLocationZones()
+	locationZones, err := c.GetLocationZones(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	resolvers, err := c.GetResolvers()
+	resolvers, err := c.GetResolvers(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	limitReqs, err := c.GetHTTPLimitReqs()
+	limitReqs, err := c.GetHTTPLimitReqs(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	limitConnsHTTP, err := c.GetHTTPConnectionsLimit()
+	limitConnsHTTP, err := c.GetHTTPConnectionsLimit(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	limitConnsStream, err := c.GetStreamConnectionsLimit()
+	limitConnsStream, err := c.GetStreamConnectionsLimit(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -995,66 +992,63 @@ func isNGINXStatusFieldValid(fields []string) error {
 }
 
 // GetCaches returns Cache stats
-func (c Client) GetCaches() (Caches, error) {
+func (c Client) GetCaches(ctx context.Context) (Caches, error) {
 	var caches Caches
-	err := c.get("http/caches", &caches)
-	if err != nil {
+	if err := c.get(ctx, "http/caches", &caches); err != nil {
 		return nil, fmt.Errorf("getting caches: %w", err)
 	}
 	return caches, nil
 }
 
 // GetSlabs returns Slabs stats.
-func (c Client) GetSlabs() (Slabs, error) {
+func (c Client) GetSlabs(ctx context.Context) (Slabs, error) {
 	var slabs Slabs
-	err := c.get("slabs", &slabs)
-	if err != nil {
+	if err := c.get(ctx, "slabs", &slabs); err != nil {
 		return nil, fmt.Errorf("getting slabs: %w", err)
 	}
 	return slabs, nil
 }
 
 // GetConnections returns Connections stats.
-func (c Client) GetConnections() (Connections, error) {
+func (c Client) GetConnections(ctx context.Context) (Connections, error) {
 	var cons Connections
-	err := c.get("connections", &cons)
-	if err != nil {
+	if err := c.get(ctx, "connections", &cons); err != nil {
 		return Connections{}, fmt.Errorf("failed to get connections: %w", err)
 	}
 	return cons, nil
 }
 
 // GetHTTPRequests returns http/requests stats.
-func (c Client) GetHTTPRequests() (HTTPRequests, error) {
+func (c Client) GetHTTPRequests(ctx context.Context) (HTTPRequests, error) {
 	var requests HTTPRequests
-	if err := c.get("http/requests", &requests); err != nil {
+	if err := c.get(ctx, "http/requests", &requests); err != nil {
 		return HTTPRequests{}, fmt.Errorf("getting http requests: %w", err)
 	}
 	return requests, nil
 }
 
 // GetSSL returns SSL stats.
-func (c Client) GetSSL() (SSL, error) {
+func (c Client) GetSSL(ctx context.Context) (SSL, error) {
 	var ssl SSL
-	if err := c.get("ssl", &ssl); err != nil {
+	if err := c.get(ctx, "ssl", &ssl); err != nil {
 		return SSL{}, fmt.Errorf("getting ssl: %w", err)
 	}
 	return ssl, nil
 }
 
 // GetServerZones returns http/server_zones stats.
-func (c *Client) GetServerZones() (ServerZones, error) {
+func (c *Client) GetServerZones(ctx context.Context) (ServerZones, error) {
 	var zones ServerZones
-	if err := c.get("http/server_zones", &zones); err != nil {
+	if err := c.get(ctx, "http/server_zones", &zones); err != nil {
 		return nil, fmt.Errorf("getting server zones: %w", err)
 	}
 	return zones, nil
 }
 
 // GetStreamServerZones returns stream/server_zones stats.
-func (c Client) GetStreamServerZones() (StreamServerZones, error) {
+func (c Client) GetStreamServerZones(ctx context.Context) (StreamServerZones, error) {
 	var zones StreamServerZones
-	err := c.get("stream/server_zones", &zones)
+	err := c.get(ctx, "stream/server_zones", &zones)
 	if err != nil {
 		var ie *internalError
 		if errors.As(err, &ie) {
@@ -1068,19 +1062,18 @@ func (c Client) GetStreamServerZones() (StreamServerZones, error) {
 }
 
 // GetUpstreams returns http/upstreams stats.
-func (c Client) GetUpstreams() (Upstreams, error) {
+func (c Client) GetUpstreams(ctx context.Context) (Upstreams, error) {
 	var upstreams Upstreams
-	err := c.get("http/upstreams", &upstreams)
-	if err != nil {
+	if err := c.get(ctx, "http/upstreams", &upstreams); err != nil {
 		return nil, fmt.Errorf("getting upstreams: %w", err)
 	}
 	return upstreams, nil
 }
 
 // GetStreamUpstreams returns stream/upstreams stats.
-func (c Client) GetStreamUpstreams() (StreamUpstreams, error) {
+func (c Client) GetStreamUpstreams(ctx context.Context) (StreamUpstreams, error) {
 	var upstreams StreamUpstreams
-	err := c.get("stream/upstreams", &upstreams)
+	err := c.get(ctx, "stream/upstreams", &upstreams)
 	if err != nil {
 		var ie *internalError
 		if errors.As(err, &ie) {
@@ -1094,9 +1087,9 @@ func (c Client) GetStreamUpstreams() (StreamUpstreams, error) {
 }
 
 // GetStreamZoneSync returns stream/zone_sync stats.
-func (c Client) GetStreamZoneSync() (StreamZoneSync, error) {
+func (c Client) GetStreamZoneSync(ctx context.Context) (StreamZoneSync, error) {
 	var streamZoneSync StreamZoneSync
-	err := c.get("stream/zone_sync", &streamZoneSync)
+	err := c.get(ctx, "stream/zone_sync", &streamZoneSync)
 	if err != nil {
 		var ie *internalError
 		if errors.As(err, &ie) {
@@ -1110,36 +1103,35 @@ func (c Client) GetStreamZoneSync() (StreamZoneSync, error) {
 }
 
 // GetLocationZones returns http/location_zones stats.
-func (c Client) GetLocationZones() (LocationZones, error) {
+func (c Client) GetLocationZones(ctx context.Context) (LocationZones, error) {
 	var locationZones LocationZones
 	if c.Version < 5 {
 		return LocationZones{}, nil
 	}
-	if err := c.get("http/location_zones", &locationZones); err != nil {
+	if err := c.get(ctx, "http/location_zones", &locationZones); err != nil {
 		return nil, fmt.Errorf("gettign location zones: %w", err)
 	}
 	return locationZones, nil
 }
 
 // GetResolvers returns Resolvers stats.
-func (c Client) GetResolvers() (Resolvers, error) {
+func (c Client) GetResolvers(ctx context.Context) (Resolvers, error) {
 	var resolvers Resolvers
 	if c.Version < 5 {
 		return Resolvers{}, nil
 	}
-	if err := c.get("resolvers", &resolvers); err != nil {
+	if err := c.get(ctx, "resolvers", &resolvers); err != nil {
 		return nil, fmt.Errorf("getting resolvers: %w", err)
 	}
 	return resolvers, nil
 }
 
 // GetProcesses returns Processes stats.
-func (c Client) GetProcesses() (Processes, error) {
+func (c Client) GetProcesses(ctx context.Context) (Processes, error) {
 	var respProcesses struct {
 		Respawned int `json:"respawned"`
 	}
-	err := c.get("processes", &respProcesses)
-	if err != nil {
+	if err := c.get(ctx, "processes", &respProcesses); err != nil {
 		return Processes{}, fmt.Errorf("ngx: getting processes: %w", err)
 	}
 	p := Processes{
@@ -1155,42 +1147,42 @@ type KeyValPairs map[string]string
 type KeyValPairsByZone map[string]KeyValPairs
 
 // GetKeyValPairs fetches key/value pairs for a given HTTP zone.
-func (c Client) GetKeyValPairs(zone string) (KeyValPairs, error) {
-	return c.getKeyValPairs(zone, httpContext)
+func (c Client) GetKeyValPairs(ctx context.Context, zone string) (KeyValPairs, error) {
+	return c.getKeyValPairs(ctx, zone, httpContext)
 }
 
 // GetStreamKeyValPairs fetches key/value pairs for a given Stream zone.
-func (c Client) GetStreamKeyValPairs(zone string) (KeyValPairs, error) {
-	return c.getKeyValPairs(zone, streamContext)
+func (c Client) GetStreamKeyValPairs(ctx context.Context, zone string) (KeyValPairs, error) {
+	return c.getKeyValPairs(ctx, zone, streamContext)
 }
 
-func (c Client) getKeyValPairs(zone string, stream bool) (KeyValPairs, error) {
+func (c Client) getKeyValPairs(ctx context.Context, zone string, stream bool) (KeyValPairs, error) {
+	if zone == "" {
+		return nil, errors.New("missing zone")
+	}
 	base := "http"
 	if stream {
 		base = "stream"
 	}
-	if zone == "" {
-		return nil, fmt.Errorf("zone required")
-	}
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
 	var keyValPairs KeyValPairs
-	if err := c.get(path, &keyValPairs); err != nil {
+	if err := c.get(ctx, path, &keyValPairs); err != nil {
 		return nil, fmt.Errorf("getting keyvals for %v/%v zone: %w", base, zone, err)
 	}
 	return keyValPairs, nil
 }
 
 // GetAllKeyValPairs fetches all key/value pairs for all HTTP zones.
-func (c Client) GetAllKeyValPairs() (KeyValPairsByZone, error) {
-	return c.getAllKeyValPairs(httpContext)
+func (c Client) GetAllKeyValPairs(ctx context.Context) (KeyValPairsByZone, error) {
+	return c.getAllKeyValPairs(ctx, httpContext)
 }
 
 // GetAllStreamKeyValPairs fetches all key/value pairs for all Stream zones.
-func (c Client) GetAllStreamKeyValPairs() (KeyValPairsByZone, error) {
-	return c.getAllKeyValPairs(streamContext)
+func (c Client) GetAllStreamKeyValPairs(ctx context.Context) (KeyValPairsByZone, error) {
+	return c.getAllKeyValPairs(ctx, streamContext)
 }
 
-func (c Client) getAllKeyValPairs(stream bool) (KeyValPairsByZone, error) {
+func (c Client) getAllKeyValPairs(ctx context.Context, stream bool) (KeyValPairsByZone, error) {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1198,78 +1190,78 @@ func (c Client) getAllKeyValPairs(stream bool) (KeyValPairsByZone, error) {
 	path := fmt.Sprintf("%v/keyvals", base)
 
 	var keyValPairsByZone KeyValPairsByZone
-	if err := c.get(path, &keyValPairsByZone); err != nil {
+	if err := c.get(ctx, path, &keyValPairsByZone); err != nil {
 		return nil, fmt.Errorf("getting keyvals for all %v zones: %w", base, err)
 	}
 	return keyValPairsByZone, nil
 }
 
 // AddKeyValPair adds a new key/value pair to a given HTTP zone.
-func (c Client) AddKeyValPair(zone string, key string, val string) error {
-	return c.addKeyValPair(zone, key, val, httpContext)
+func (c Client) AddKeyValPair(ctx context.Context, zone string, key string, val string) error {
+	return c.addKeyValPair(ctx, zone, key, val, httpContext)
 }
 
 // AddStreamKeyValPair adds a new key/value pair to a given Stream zone.
-func (c Client) AddStreamKeyValPair(zone string, key string, val string) error {
-	return c.addKeyValPair(zone, key, val, streamContext)
+func (c Client) AddStreamKeyValPair(ctx context.Context, zone string, key string, val string) error {
+	return c.addKeyValPair(ctx, zone, key, val, streamContext)
 }
 
-func (c Client) addKeyValPair(zone string, key string, val string, stream bool) error {
+func (c Client) addKeyValPair(ctx context.Context, zone string, key string, val string, stream bool) error {
+	if zone == "" {
+		return errors.New("missing zone")
+	}
 	base := "http"
 	if stream {
 		base = "stream"
 	}
-	if zone == "" {
-		return fmt.Errorf("zone required")
-	}
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
 	input := KeyValPairs{key: val}
-	if err := c.post(path, &input); err != nil {
+	if err := c.post(ctx, path, &input); err != nil {
 		return fmt.Errorf("adding key value pair for %v/%v zone: %w", base, zone, err)
 	}
 	return nil
 }
 
 // ModifyKeyValPair modifies the value of an existing key in a given HTTP zone.
-func (c Client) ModifyKeyValPair(zone string, key string, val string) error {
-	return c.modifyKeyValPair(zone, key, val, httpContext)
+func (c Client) ModifyKeyValPair(ctx context.Context, zone string, key string, val string) error {
+	return c.modifyKeyValPair(ctx, zone, key, val, httpContext)
 }
 
 // Modify10KeyValPair modifies the value of an existing key in a given Stream zone.
-func (c Client) ModifyStreamKeyValPair(zone string, key string, val string) error {
-	return c.modifyKeyValPair(zone, key, val, streamContext)
+func (c Client) ModifyStreamKeyValPair(ctx context.Context, zone string, key string, val string) error {
+	return c.modifyKeyValPair(ctx, zone, key, val, streamContext)
 }
 
-func (c Client) modifyKeyValPair(zone string, key string, val string, stream bool) error {
+func (c Client) modifyKeyValPair(ctx context.Context, zone string, key string, val string, stream bool) error {
+	if zone == "" {
+		return errors.New("missing zone")
+	}
+
 	base := "http"
 	if stream {
 		base = "stream"
 	}
-	if zone == "" {
-		return fmt.Errorf("zone required")
-	}
-
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
 	input := KeyValPairs{key: val}
-	if err := c.patch(path, &input, http.StatusNoContent); err != nil {
+	if err := c.patch(ctx, path, &input, http.StatusNoContent); err != nil {
 		return fmt.Errorf("updating key value pair for %v/%v zone: %w", base, zone, err)
 	}
 	return nil
 }
 
 // DeleteKeyValuePair deletes the key/value pair for a key in a given HTTP zone.
-func (c Client) DeleteKeyValuePair(zone string, key string) error {
-	return c.deleteKeyValuePair(zone, key, httpContext)
+func (c Client) DeleteKeyValuePair(ctx context.Context, zone string, key string) error {
+	return c.deleteKeyValuePair(ctx, zone, key, httpContext)
 }
 
 // DeleteStreamKeyValuePair deletes the key/value pair for a key in a given Stream zone.
-func (c *Client) DeleteStreamKeyValuePair(zone string, key string) error {
-	return c.deleteKeyValuePair(zone, key, streamContext)
+func (c *Client) DeleteStreamKeyValuePair(ctx context.Context, zone string, key string) error {
+	return c.deleteKeyValuePair(ctx, zone, key, streamContext)
 }
 
 // To delete a key/value pair you set the value to null via the API,
 // then NGINX+ will delete the key.
-func (c Client) deleteKeyValuePair(zone string, key string, stream bool) error {
+func (c Client) deleteKeyValuePair(ctx context.Context, zone string, key string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1283,23 +1275,23 @@ func (c Client) deleteKeyValuePair(zone string, key string, stream bool) error {
 	keyval[key] = nil
 
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
-	if err := c.patch(path, &keyval, http.StatusNoContent); err != nil {
+	if err := c.patch(ctx, path, &keyval, http.StatusNoContent); err != nil {
 		return fmt.Errorf("removing key values pair for %v/%v zone: %w", base, zone, err)
 	}
 	return nil
 }
 
 // DeleteKeyValPairs deletes all the key-value pairs in a given HTTP zone.
-func (c Client) DeleteKeyValPairs(zone string) error {
-	return c.deleteKeyValPairs(zone, httpContext)
+func (c Client) DeleteKeyValPairs(ctx context.Context, zone string) error {
+	return c.deleteKeyValPairs(ctx, zone, httpContext)
 }
 
 // DeleteStreamKeyValPairs deletes all the key-value pairs in a given Stream zone.
-func (c Client) DeleteStreamKeyValPairs(zone string) error {
-	return c.deleteKeyValPairs(zone, streamContext)
+func (c Client) DeleteStreamKeyValPairs(ctx context.Context, zone string) error {
+	return c.deleteKeyValPairs(ctx, zone, streamContext)
 }
 
-func (c Client) deleteKeyValPairs(zone string, stream bool) error {
+func (c Client) deleteKeyValPairs(ctx context.Context, zone string, stream bool) error {
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1308,63 +1300,63 @@ func (c Client) deleteKeyValPairs(zone string, stream bool) error {
 		return fmt.Errorf("zone required")
 	}
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
-	if err := c.delete(path, http.StatusNoContent); err != nil {
+	if err := c.delete(ctx, path, http.StatusNoContent); err != nil {
 		return fmt.Errorf("removing all key value pairs for %v/%v zone: %w", base, zone, err)
 	}
 	return nil
 }
 
 // UpdateHTTPServer updates the server of the upstream.
-func (c Client) UpdateHTTPServer(upstream string, server UpstreamServer) error {
+func (c Client) UpdateHTTPServer(ctx context.Context, upstream string, server UpstreamServer) error {
 	path := fmt.Sprintf("http/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
-	if err := c.patch(path, &server, http.StatusOK); err != nil {
+	if err := c.patch(ctx, path, &server, http.StatusOK); err != nil {
 		return fmt.Errorf("ngx: updating %v server to %v upstream: %w", server.Server, upstream, err)
 	}
 	return nil
 }
 
 // UpdateStreamServer updates the stream server of the upstream.
-func (c Client) UpdateStreamServer(upstream string, server StreamUpstreamServer) error {
+func (c Client) UpdateStreamServer(ctx context.Context, upstream string, server StreamUpstreamServer) error {
 	path := fmt.Sprintf("stream/upstreams/%v/servers/%v", upstream, server.ID)
 	server.ID = 0
-	if err := c.patch(path, &server, http.StatusOK); err != nil {
+	if err := c.patch(ctx, path, &server, http.StatusOK); err != nil {
 		return fmt.Errorf("ngx: updating %v stream server to %v upstream: %w", server.Server, upstream, err)
 	}
 	return nil
 }
 
 // GetHTTPLimitReqs returns http/limit_reqs stats.
-func (c Client) GetHTTPLimitReqs() (HTTPLimitRequests, error) {
+func (c Client) GetHTTPLimitReqs(ctx context.Context) (HTTPLimitRequests, error) {
 	var limitReqs HTTPLimitRequests
 	if c.Version < 6 {
 		return HTTPLimitRequests{}, nil
 	}
-	if err := c.get("http/limit_reqs", &limitReqs); err != nil {
+	if err := c.get(ctx, "http/limit_reqs", &limitReqs); err != nil {
 		return nil, fmt.Errorf("ngx: getting http limit requests: %w", err)
 	}
 	return limitReqs, nil
 }
 
 // GetHTTPConnectionsLimit returns http/limit_conns stats.
-func (c Client) GetHTTPConnectionsLimit() (HTTPLimitConnections, error) {
+func (c Client) GetHTTPConnectionsLimit(ctx context.Context) (HTTPLimitConnections, error) {
 	var limitConns HTTPLimitConnections
 	if c.Version < 6 {
 		return HTTPLimitConnections{}, nil
 	}
-	if err := c.get("http/limit_conns", &limitConns); err != nil {
+	if err := c.get(ctx, "http/limit_conns", &limitConns); err != nil {
 		return nil, fmt.Errorf("ngx: getting http connections limit: %w", err)
 	}
 	return limitConns, nil
 }
 
 // GetStreamConnectionsLimit returns stream/limit_conns stats.
-func (c Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
+func (c Client) GetStreamConnectionsLimit(ctx context.Context) (StreamLimitConnections, error) {
 	var limitConns StreamLimitConnections
 	if c.Version < 6 {
 		return StreamLimitConnections{}, nil
 	}
-	err := c.get("stream/limit_conns", &limitConns)
+	err := c.get(ctx, "stream/limit_conns", &limitConns)
 	if err != nil {
 		var ie *internalError
 		if errors.As(err, &ie) {
@@ -1377,10 +1369,7 @@ func (c Client) GetStreamConnectionsLimit() (StreamLimitConnections, error) {
 	return limitConns, nil
 }
 
-func (c Client) get(path string, data interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func (c Client) get(ctx context.Context, path string, data interface{}) error {
 	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -1390,6 +1379,11 @@ func (c Client) get(path string, data interface{}) error {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		return fmt.Errorf("sending request, path: %s, %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -1411,12 +1405,8 @@ func (c Client) get(path string, data interface{}) error {
 	return nil
 }
 
-func (c Client) post(path string, payload interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func (c Client) post(ctx context.Context, path string, payload interface{}) error {
 	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
-
 	jsonInput, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1430,6 +1420,11 @@ func (c Client) post(path string, payload interface{}) error {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("sending POST request %v: %w", path, ctx.Err())
+		default:
+		}
 		return fmt.Errorf("sending POST request %v: %w", path, err)
 	}
 	defer resp.Body.Close()
@@ -1439,16 +1434,11 @@ func (c Client) post(path string, payload interface{}) error {
 			"expected %v response, got %v",
 			http.StatusCreated, resp.StatusCode))
 	}
-
 	return nil
 }
 
-func (c Client) delete(path string, expectedStatusCode int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func (c Client) delete(ctx context.Context, path string, expectedStatusCode int) error {
 	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("creating DELETE request: %w", err)
@@ -1456,6 +1446,11 @@ func (c Client) delete(path string, expectedStatusCode int) error {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		return fmt.Errorf("sending DELETE request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -1468,12 +1463,8 @@ func (c Client) delete(path string, expectedStatusCode int) error {
 	return nil
 }
 
-func (c Client) patch(path string, input interface{}, expectedStatusCode int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func (c Client) patch(ctx context.Context, path string, input interface{}, expectedStatusCode int) error {
 	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
-
 	jsonInput, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1486,6 +1477,11 @@ func (c Client) patch(path string, input interface{}, expectedStatusCode int) er
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("sending PATCH request: %w", ctx.Err())
+		default:
+		}
 		return fmt.Errorf("sending PATCH request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -1574,16 +1570,18 @@ func readAPIErrorResponse(respBody io.ReadCloser) (apiErrorResponse, error) {
 	return apiErr, nil
 }
 
-func getAPIVersions(httpClient *http.Client, endpoint string) ([]int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func getAPIVersions(ctx context.Context, httpClient *http.Client, endpoint string) ([]int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating GET request: %w", err)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 		return nil, fmt.Errorf("sending request to %v: %w", endpoint, err)
 	}
 	defer resp.Body.Close()

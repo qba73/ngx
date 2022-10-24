@@ -1,6 +1,7 @@
 package ngx_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -74,7 +75,7 @@ func newNginxTestClient(baseURL string, t *testing.T) *ngx.Client {
 	return c
 }
 
-func TestClientRetrivesInfoAboutRunningNGINXInstance(t *testing.T) {
+func TestGetNGINXInfo_ReturnsInfoAboutRunningNGINXInstance(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(responseGetNGINXInfo, t)
 	defer ts.Close()
@@ -92,7 +93,7 @@ func TestClientRetrivesInfoAboutRunningNGINXInstance(t *testing.T) {
 		ParentProcessID: 1,
 	}
 
-	got, err := c.GetNginxInfo()
+	got, err := c.GetNginxInfo(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func TestClientRetrivesInfoAboutRunningNGINXInstance(t *testing.T) {
 	}
 }
 
-func TestClientRetrivesNGINXStatusOnValidParameters(t *testing.T) {
+func TestGetNGINXStatus_ReturnsStatusInfoOnValidFields(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(responseGetNGINXStatusVersion, t)
 	defer ts.Close()
@@ -113,7 +114,7 @@ func TestClientRetrivesNGINXStatusOnValidParameters(t *testing.T) {
 		Version: "1.21.6",
 	}
 
-	got, err := c.GetNGINXStatus("version")
+	got, err := c.GetNGINXStatus(context.Background(), "version")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,33 +126,37 @@ func TestClientRetrivesNGINXStatusOnValidParameters(t *testing.T) {
 
 func TestClientUsesValidRequestPathOnValidRequestParams(t *testing.T) {
 	t.Parallel()
-	ts := newTestServerWithPathValidator(responseGetNGINXStatusVersion, "/8/nginx?fields=version", t)
+
+	var called bool
+	wantURI := "/8/nginx?fields=version"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		gotReqURI := r.RequestURI
+		verifyURIs(wantURI, gotReqURI, t)
+		rw.Write([]byte(responseGetNGINXStatusVersion))
+		called = true
+	}))
 	defer ts.Close()
 
 	c := newNginxTestClient(ts.URL, t)
 
-	want := ngx.NginxInfo{
-		Version: "1.21.6",
-	}
-
-	got, err := c.GetNGINXStatus("version")
+	_, err := c.GetNGINXStatus(context.Background(), "version")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if !cmp.Equal(want, got) {
-		t.Error(cmp.Diff(want, got))
+	if !called {
+		t.Error("handler not called")
 	}
 }
 
-func TestGetNGINXStatusErrorsOnInvalidRequestParam(t *testing.T) {
+func TestGetNGINXStatus_ErrorsOnInvalidRequestParams(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(responseGetNGINXStatusVersion, t)
 	defer ts.Close()
 
 	c := newNginxTestClient(ts.URL, t)
 
-	_, err := c.GetNGINXStatus("bogus_request_param")
+	_, err := c.GetNGINXStatus(context.Background(), "bogus_request_param")
 	if err == nil {
 		t.Fatal("want err on passing bogus request param")
 	}
