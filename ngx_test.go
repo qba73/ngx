@@ -2,7 +2,6 @@ package ngx_test
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,9 +14,9 @@ import (
 )
 
 func newTestServer(respBody string, t *testing.T) *httptest.Server {
-	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log(r.URL.Path)
-		_, err := io.WriteString(rw, respBody)
+		_, err := w.Write([]byte(respBody))
 		if err != nil {
 			t.Fatal()
 		}
@@ -26,10 +25,10 @@ func newTestServer(respBody string, t *testing.T) *httptest.Server {
 }
 
 func newTestServerWithPathValidator(respBody string, wantURI string, t *testing.T) *httptest.Server {
-	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotReqURI := r.RequestURI
 		verifyURIs(wantURI, gotReqURI, t)
-		_, err := io.WriteString(rw, respBody)
+		_, err := w.Write([]byte(respBody))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,11 +67,28 @@ func verifyURIs(wanturi, goturi string, t *testing.T) {
 }
 
 func newNginxTestClient(baseURL string, t *testing.T) *ngx.Client {
+	t.Helper()
 	c, err := ngx.NewClient(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func TestNewClient_FailsOnInvalidVersion(t *testing.T) {
+	t.Parallel()
+	_, err := ngx.NewClient("http://localhost", ngx.WithVersion(10))
+	if err == nil {
+		t.Fatal("want error on invalid version, got nil")
+	}
+}
+
+func TestNewClient_FailsOnInvalidBaseURL(t *testing.T) {
+	t.Parallel()
+	_, err := ngx.NewClient("")
+	if err == nil {
+		t.Fatal("want error on invalid baseURL, got nil")
+	}
 }
 
 func TestGetNGINXInfo_ReturnsInfoAboutRunningNGINXInstance(t *testing.T) {

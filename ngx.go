@@ -18,7 +18,7 @@ import (
 
 const (
 	// APIVersion is the default version of NGINX Plus API supported by the client.
-	DefaultAPIVersion = 8
+	defaultAPIVersion = 8
 
 	pathNotFoundCode  = "PathNotFound"
 	streamContext     = true
@@ -27,8 +27,6 @@ const (
 )
 
 var (
-	supportedAPIVersions = []int{4, 5, 6, 7, 8}
-
 	// Default values for servers in Upstreams.
 	defaultMaxConns    = 0
 	defaultMaxFails    = 1
@@ -554,7 +552,7 @@ func WithHTTPClient(h *http.Client) option {
 		if h == nil {
 			return errors.New("nil http client")
 		}
-		c.HTTPClient = h
+		c.httpClient = h
 		return nil
 	}
 }
@@ -565,29 +563,34 @@ func WithHTTPClient(h *http.Client) option {
 // Valid versions are 4,5,6,7,8. The Client's default version is 8.
 func WithVersion(v int) option {
 	return func(c *Client) error {
-		if !slices.Contains(supportedAPIVersions, v) {
-			return errors.New("unsupported NGINX API version")
+		switch v {
+		case 4, 5, 6, 7, 8:
+			c.version = v
+			return nil
+		default:
 		}
-		c.Version = v
-		return nil
+		return errors.New("unsupported NGINX API version")
 	}
 }
 
 // NginxClient lets you access NGINX Plus API.
 type Client struct {
-	Version    int
-	BaseURL    string
-	HTTPClient *http.Client
+	version    int
+	baseURL    string
+	httpClient *http.Client
 }
 
-// NewClient takes NGIXN base URL and constructs a new default client.
+// NewClient takes NGINX base URL and constructs a new default client.
 // The client can be customized by passing functional options that
-// allow to configure client version and HTTP Client used by NGINX client.
+// configure client version and http.Client.
 func NewClient(baseURL string, opts ...option) (*Client, error) {
+	if baseURL == "" {
+		return nil, errors.New("empty baseURL string")
+	}
 	c := Client{
-		Version:    DefaultAPIVersion,
-		BaseURL:    baseURL,
-		HTTPClient: &http.Client{},
+		version:    defaultAPIVersion,
+		baseURL:    baseURL,
+		httpClient: &http.Client{},
 	}
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
@@ -1105,7 +1108,7 @@ func (c Client) GetStreamZoneSync(ctx context.Context) (StreamZoneSync, error) {
 // GetLocationZones returns http/location_zones stats.
 func (c Client) GetLocationZones(ctx context.Context) (LocationZones, error) {
 	var locationZones LocationZones
-	if c.Version < 5 {
+	if c.version < 5 {
 		return LocationZones{}, nil
 	}
 	if err := c.get(ctx, "http/location_zones", &locationZones); err != nil {
@@ -1117,7 +1120,7 @@ func (c Client) GetLocationZones(ctx context.Context) (LocationZones, error) {
 // GetResolvers returns Resolvers stats.
 func (c Client) GetResolvers(ctx context.Context) (Resolvers, error) {
 	var resolvers Resolvers
-	if c.Version < 5 {
+	if c.version < 5 {
 		return Resolvers{}, nil
 	}
 	if err := c.get(ctx, "resolvers", &resolvers); err != nil {
@@ -1329,7 +1332,7 @@ func (c Client) UpdateStreamServer(ctx context.Context, upstream string, server 
 // GetHTTPLimitReqs returns http/limit_reqs stats.
 func (c Client) GetHTTPLimitReqs(ctx context.Context) (HTTPLimitRequests, error) {
 	var limitReqs HTTPLimitRequests
-	if c.Version < 6 {
+	if c.version < 6 {
 		return HTTPLimitRequests{}, nil
 	}
 	if err := c.get(ctx, "http/limit_reqs", &limitReqs); err != nil {
@@ -1341,7 +1344,7 @@ func (c Client) GetHTTPLimitReqs(ctx context.Context) (HTTPLimitRequests, error)
 // GetHTTPConnectionsLimit returns http/limit_conns stats.
 func (c Client) GetHTTPConnectionsLimit(ctx context.Context) (HTTPLimitConnections, error) {
 	var limitConns HTTPLimitConnections
-	if c.Version < 6 {
+	if c.version < 6 {
 		return HTTPLimitConnections{}, nil
 	}
 	if err := c.get(ctx, "http/limit_conns", &limitConns); err != nil {
@@ -1353,7 +1356,7 @@ func (c Client) GetHTTPConnectionsLimit(ctx context.Context) (HTTPLimitConnectio
 // GetStreamConnectionsLimit returns stream/limit_conns stats.
 func (c Client) GetStreamConnectionsLimit(ctx context.Context) (StreamLimitConnections, error) {
 	var limitConns StreamLimitConnections
-	if c.Version < 6 {
+	if c.version < 6 {
 		return StreamLimitConnections{}, nil
 	}
 	err := c.get(ctx, "stream/limit_conns", &limitConns)
@@ -1370,14 +1373,14 @@ func (c Client) GetStreamConnectionsLimit(ctx context.Context) (StreamLimitConne
 }
 
 func (c Client) get(ctx context.Context, path string, data interface{}) error {
-	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
+	url := fmt.Sprintf("%v/%v/%v", c.baseURL, c.version, path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1406,7 +1409,7 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 }
 
 func (c Client) post(ctx context.Context, path string, payload interface{}) error {
-	url := fmt.Sprintf("%v/%v/%v", c.BaseURL, c.Version, path)
+	url := fmt.Sprintf("%v/%v/%v", c.baseURL, c.version, path)
 	jsonInput, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1418,7 +1421,7 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1438,13 +1441,13 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 }
 
 func (c Client) delete(ctx context.Context, path string, expectedStatusCode int) error {
-	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
+	path = fmt.Sprintf("%v/%v/%v/", c.baseURL, c.version, path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("creating DELETE request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1464,7 +1467,7 @@ func (c Client) delete(ctx context.Context, path string, expectedStatusCode int)
 }
 
 func (c Client) patch(ctx context.Context, path string, input interface{}, expectedStatusCode int) error {
-	path = fmt.Sprintf("%v/%v/%v/", c.BaseURL, c.Version, path)
+	path = fmt.Sprintf("%v/%v/%v/", c.baseURL, c.version, path)
 	jsonInput, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1475,7 +1478,7 @@ func (c Client) patch(ctx context.Context, path string, input interface{}, expec
 		return fmt.Errorf("creating PATCH request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1568,39 +1571,6 @@ func readAPIErrorResponse(respBody io.ReadCloser) (apiErrorResponse, error) {
 		return apiErrorResponse{}, fmt.Errorf("unmarshalling apiErrorResponse: got %q response: %w", string(body), err)
 	}
 	return apiErr, nil
-}
-
-func getAPIVersions(ctx context.Context, httpClient *http.Client, endpoint string) ([]int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating GET request: %w", err)
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		return nil, fmt.Errorf("sending request to %v: %w", endpoint, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("got %v requesting API version", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-
-	var vers []int
-	err = json.Unmarshal(body, &vers)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling response: %w", err)
-	}
-	return vers, nil
 }
 
 func determineServerUpdates(updatedServers []UpstreamServer, nginxServers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer) {
