@@ -24,10 +24,10 @@ func newTestServer(respBody string, t *testing.T) *httptest.Server {
 	return ts
 }
 
-func newTestServerWithPathValidator(respBody string, wantURI string, t *testing.T) *httptest.Server {
+func newTestServerWithPathValidator(respBody string, wantURL string, t *testing.T) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotReqURI := r.RequestURI
-		verifyURIs(wantURI, gotReqURI, t)
+		verifyURIs(wantURL, gotReqURI, t)
 		_, err := w.Write([]byte(respBody))
 		if err != nil {
 			t.Fatal(err)
@@ -37,14 +37,14 @@ func newTestServerWithPathValidator(respBody string, wantURI string, t *testing.
 }
 
 // verifyURIs is a test helper function that verifies if provided URIs are equal.
-func verifyURIs(wanturi, goturi string, t *testing.T) {
-	wantU, err := url.Parse(wanturi)
+func verifyURIs(wantURL, gotURL string, t *testing.T) {
+	wantU, err := url.Parse(wantURL)
 	if err != nil {
-		t.Fatalf("error parsing URL %q, %v", wanturi, err)
+		t.Fatalf("error parsing URL %q, %v", wantURL, err)
 	}
-	gotU, err := url.Parse(goturi)
+	gotU, err := url.Parse(gotURL)
 	if err != nil {
-		t.Fatalf("error parsing URL %q, %v", wanturi, err)
+		t.Fatalf("error parsing URL %q, %v", wantURL, err)
 	}
 	// Verify if paths of both URIs are the same.
 	if wantU.Path != gotU.Path {

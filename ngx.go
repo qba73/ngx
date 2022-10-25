@@ -552,7 +552,7 @@ func WithHTTPClient(h *http.Client) option {
 		if h == nil {
 			return errors.New("nil http client")
 		}
-		c.httpClient = h
+		c.HTTPClient = h
 		return nil
 	}
 }
@@ -576,8 +576,8 @@ func WithVersion(v int) option {
 // NginxClient lets you access NGINX Plus API.
 type Client struct {
 	version    int
-	baseURL    string
-	httpClient *http.Client
+	URL        string
+	HTTPClient *http.Client
 }
 
 // NewClient takes NGINX base URL and constructs a new default client.
@@ -589,8 +589,8 @@ func NewClient(baseURL string, opts ...option) (*Client, error) {
 	}
 	c := Client{
 		version:    defaultAPIVersion,
-		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		URL:        baseURL,
+		HTTPClient: http.DefaultClient,
 	}
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
@@ -1373,14 +1373,14 @@ func (c Client) GetStreamConnectionsLimit(ctx context.Context) (StreamLimitConne
 }
 
 func (c Client) get(ctx context.Context, path string, data interface{}) error {
-	url := fmt.Sprintf("%v/%v/%v", c.baseURL, c.version, path)
+	url := fmt.Sprintf("%v/%v/%v", c.URL, c.version, path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1409,7 +1409,7 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 }
 
 func (c Client) post(ctx context.Context, path string, payload interface{}) error {
-	url := fmt.Sprintf("%v/%v/%v", c.baseURL, c.version, path)
+	url := fmt.Sprintf("%v/%v/%v", c.URL, c.version, path)
 	jsonInput, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1421,7 +1421,7 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1441,13 +1441,13 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 }
 
 func (c Client) delete(ctx context.Context, path string, expectedStatusCode int) error {
-	path = fmt.Sprintf("%v/%v/%v/", c.baseURL, c.version, path)
+	path = fmt.Sprintf("%v/%v/%v/", c.URL, c.version, path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("creating DELETE request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
@@ -1467,7 +1467,7 @@ func (c Client) delete(ctx context.Context, path string, expectedStatusCode int)
 }
 
 func (c Client) patch(ctx context.Context, path string, input interface{}, expectedStatusCode int) error {
-	path = fmt.Sprintf("%v/%v/%v/", c.baseURL, c.version, path)
+	path = fmt.Sprintf("%v/%v/%v/", c.URL, c.version, path)
 	jsonInput, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
@@ -1478,7 +1478,7 @@ func (c Client) patch(ctx context.Context, path string, input interface{}, expec
 		return fmt.Errorf("creating PATCH request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
 		case <-ctx.Done():
