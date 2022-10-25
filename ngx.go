@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 
@@ -65,40 +64,6 @@ type StreamUpstreamServer struct {
 	Down        *bool  `json:"down,omitempty"`
 	Weight      *int   `json:"weight,omitempty"`
 	Service     string `json:"service,omitempty"`
-}
-
-type apiErrorResponse struct {
-	Error     apiError
-	RequestID string `json:"request_id"`
-	Href      string
-}
-
-func (resp *apiErrorResponse) toString() string {
-	return fmt.Sprintf("error.status=%v; error.text=%v; error.code=%v; request_id=%v; href=%v",
-		resp.Error.Status, resp.Error.Text, resp.Error.Code, resp.RequestID, resp.Href)
-}
-
-type apiError struct {
-	Status int
-	Text   string
-	Code   string
-}
-
-type internalError struct {
-	apiError
-	err string
-}
-
-// Error allows internalError to match the Error interface.
-func (internalError *internalError) Error() string {
-	return internalError.err
-}
-
-// Wrap is a way of including current context while preserving previous error information,
-// similar to `return fmt.Errorf("error doing foo, err: %v", err)` but for our internalError type.
-func (internalError *internalError) Wrap(err string) *internalError {
-	internalError.err = fmt.Sprintf("%v. %v", err, internalError.err)
-	return internalError
 }
 
 // Stats represents NGINX Plus stats fetched from the NGINX Plus API.
@@ -605,11 +570,10 @@ func NewClient(baseURL string, opts ...option) (*Client, error) {
 // number of configuration reloads, IDs of master and worker processes.
 func (c Client) GetNginxInfo(ctx context.Context) (NginxInfo, error) {
 	var resp responseNGINXInfo
-	err := c.get(ctx, "nginx", &resp)
-	if err != nil {
+	if err := c.get(ctx, "nginx", &resp); err != nil {
 		return NginxInfo{}, fmt.Errorf("getting NGINX info: %w", err)
 	}
-	info := NginxInfo{
+	return NginxInfo{
 		Version:         resp.Version,
 		Build:           resp.Build,
 		Address:         resp.Address,
@@ -618,8 +582,7 @@ func (c Client) GetNginxInfo(ctx context.Context) (NginxInfo, error) {
 		Timestamp:       resp.Timestamp,
 		ProcessID:       resp.Pid,
 		ParentProcessID: resp.Ppid,
-	}
-	return info, nil
+	}, nil
 }
 
 // Returns nginx version, build name, address, number of configuration reloads,
@@ -656,16 +619,17 @@ func (c Client) GetNGINXStatus(ctx context.Context, fields ...string) (NginxInfo
 // CheckIfUpstreamExists checks if the upstream exists in NGINX.
 // If the upstream doesn't exist, it returns the error.
 func (c Client) CheckIfUpstreamExists(ctx context.Context, upstream string) error {
-	_, err := c.GetHTTPServers(ctx, upstream)
-	return err
+	if _, err := c.GetHTTPServers(ctx, upstream); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetHTTPServers returns the servers of the upstream from NGINX.
 func (c Client) GetHTTPServers(ctx context.Context, upstream string) ([]UpstreamServer, error) {
 	path := fmt.Sprintf("http/upstreams/%v/servers", upstream)
 	var servers []UpstreamServer
-	err := c.get(ctx, path, &servers)
-	if err != nil {
+	if err := c.get(ctx, path, &servers); err != nil {
 		return nil, fmt.Errorf("retrieving HTTP servers of upstream %v: %w", upstream, err)
 	}
 	return servers, nil
@@ -681,8 +645,7 @@ func (c Client) AddHTTPServer(ctx context.Context, upstream string, server Upstr
 		return fmt.Errorf("adding %v server to %v upstream: server already exists", server.Server, upstream)
 	}
 	path := fmt.Sprintf("http/upstreams/%v/servers/", upstream)
-	err = c.post(ctx, path, server)
-	if err != nil {
+	if err = c.post(ctx, path, server); err != nil {
 		return fmt.Errorf("adding %v server to %v upstream: %w", server.Server, upstream, err)
 	}
 	return nil
@@ -698,8 +661,7 @@ func (c Client) DeleteHTTPServer(ctx context.Context, upstream string, server st
 		return fmt.Errorf("removing %v server from %v upstream: server doesn't exist", server, upstream)
 	}
 	path := fmt.Sprintf("http/upstreams/%v/servers/%v", upstream, id)
-	err = c.delete(ctx, path, http.StatusOK)
-	if err != nil {
+	if err = c.delete(ctx, path, http.StatusOK); err != nil {
 		return fmt.Errorf("removing %v server from %v upstream: %w", server, upstream, err)
 	}
 	return nil
@@ -714,7 +676,6 @@ func (c Client) UpdateHTTPServers(ctx context.Context, upstream string, servers 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("updating servers of %v upstream: %w", upstream, err)
 	}
-
 	// We assume port 80 if no port is set for servers.
 	var formattedServers []UpstreamServer
 	for _, server := range servers {
@@ -764,8 +725,10 @@ func (c Client) getIDOfHTTPServer(ctx context.Context, upstream string, name str
 // CheckIfStreamUpstreamExists checks if the stream upstream exists in NGINX.
 // If the upstream doesn't exist, it returns the error.
 func (c Client) CheckIfStreamUpstreamExists(ctx context.Context, upstream string) error {
-	_, err := c.GetStreamServers(ctx, upstream)
-	return err
+	if _, err := c.GetStreamServers(ctx, upstream); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetStreamServers returns the stream servers of the upstream from NGINX.
@@ -805,7 +768,6 @@ func (c Client) DeleteStreamServer(ctx context.Context, upstream string, server 
 	if id == -1 {
 		return fmt.Errorf("removing %v stream server from %v upstream: server doesn't exist", server, upstream)
 	}
-
 	path := fmt.Sprintf("stream/upstreams/%v/servers/%v", upstream, id)
 	err = c.delete(ctx, path, http.StatusOK)
 	if err != nil {
@@ -1053,12 +1015,6 @@ func (c Client) GetStreamServerZones(ctx context.Context) (StreamServerZones, er
 	var zones StreamServerZones
 	err := c.get(ctx, "stream/server_zones", &zones)
 	if err != nil {
-		var ie *internalError
-		if errors.As(err, &ie) {
-			if ie.Code == pathNotFoundCode {
-				return zones, nil
-			}
-		}
 		return nil, fmt.Errorf("getting stream server zones: %w", err)
 	}
 	return zones, err
@@ -1078,12 +1034,6 @@ func (c Client) GetStreamUpstreams(ctx context.Context) (StreamUpstreams, error)
 	var upstreams StreamUpstreams
 	err := c.get(ctx, "stream/upstreams", &upstreams)
 	if err != nil {
-		var ie *internalError
-		if errors.As(err, &ie) {
-			if ie.Code == pathNotFoundCode {
-				return upstreams, nil
-			}
-		}
 		return nil, fmt.Errorf("getting stream upstreams: %w", err)
 	}
 	return upstreams, nil
@@ -1094,12 +1044,6 @@ func (c Client) GetStreamZoneSync(ctx context.Context) (StreamZoneSync, error) {
 	var streamZoneSync StreamZoneSync
 	err := c.get(ctx, "stream/zone_sync", &streamZoneSync)
 	if err != nil {
-		var ie *internalError
-		if errors.As(err, &ie) {
-			if ie.Code == pathNotFoundCode {
-				return StreamZoneSync{}, nil
-			}
-		}
 		return StreamZoneSync{}, fmt.Errorf("getting stream zone sync: %w", err)
 	}
 	return streamZoneSync, nil
@@ -1239,7 +1183,6 @@ func (c Client) modifyKeyValPair(ctx context.Context, zone string, key string, v
 	if zone == "" {
 		return errors.New("missing zone")
 	}
-
 	base := "http"
 	if stream {
 		base = "stream"
@@ -1272,7 +1215,6 @@ func (c Client) deleteKeyValuePair(ctx context.Context, zone string, key string,
 	if zone == "" {
 		return fmt.Errorf("zone required")
 	}
-
 	// map[string]string can't have a nil value so we use a different type here.
 	keyval := make(map[string]interface{})
 	keyval[key] = nil
@@ -1359,14 +1301,7 @@ func (c Client) GetStreamConnectionsLimit(ctx context.Context) (StreamLimitConne
 	if c.version < 6 {
 		return StreamLimitConnections{}, nil
 	}
-	err := c.get(ctx, "stream/limit_conns", &limitConns)
-	if err != nil {
-		var ie *internalError
-		if errors.As(err, &ie) {
-			if ie.Code == pathNotFoundCode {
-				return limitConns, nil
-			}
-		}
+	if err := c.get(ctx, "stream/limit_conns", &limitConns); err != nil {
 		return nil, fmt.Errorf("ngx: getting stream connections limit: %w", err)
 	}
 	return limitConns, nil
@@ -1379,6 +1314,7 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
+	req.Header.Add("Content-Type", "application/json; charset=utf-8")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -1390,9 +1326,7 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 		return fmt.Errorf("sending request, path: %s, %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"expected %v response, got %v",
-			http.StatusOK, resp.StatusCode))
+		return fmt.Errorf("unexpected response status %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 
@@ -1400,9 +1334,7 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 	if err != nil {
 		return fmt.Errorf("reading response body: %w", err)
 	}
-
-	err = json.Unmarshal(body, data)
-	if err != nil {
+	if err = json.Unmarshal(body, data); err != nil {
 		return fmt.Errorf("unmarshaling response: %w", err)
 	}
 	return nil
@@ -1414,13 +1346,11 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonInput))
 	if err != nil {
 		return fmt.Errorf("creating POST request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-
+	req.Header.Add("Content-Type", "application/json; charset=utf-8")
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
@@ -1431,11 +1361,8 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 		return fmt.Errorf("sending POST request %v: %w", path, err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusCreated {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"expected %v response, got %v",
-			http.StatusCreated, resp.StatusCode))
+		return fmt.Errorf("unexpected resp status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -1446,7 +1373,6 @@ func (c Client) delete(ctx context.Context, path string, expectedStatusCode int)
 	if err != nil {
 		return fmt.Errorf("creating DELETE request: %w", err)
 	}
-
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
@@ -1457,11 +1383,8 @@ func (c Client) delete(ctx context.Context, path string, expectedStatusCode int)
 		return fmt.Errorf("sending DELETE request: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != expectedStatusCode {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"failed to complete delete request: expected %v response, got %v",
-			expectedStatusCode, resp.StatusCode))
+		return fmt.Errorf("unexpected resp status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -1472,12 +1395,10 @@ func (c Client) patch(ctx context.Context, path string, input interface{}, expec
 	if err != nil {
 		return fmt.Errorf("marshaling input: %w", err)
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, bytes.NewBuffer(jsonInput))
 	if err != nil {
 		return fmt.Errorf("creating PATCH request: %w", err)
 	}
-
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		select {
@@ -1488,11 +1409,8 @@ func (c Client) patch(ctx context.Context, path string, input interface{}, expec
 		return fmt.Errorf("sending PATCH request: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != expectedStatusCode {
-		return createResponseMismatchError(resp.Body).Wrap(fmt.Sprintf(
-			"failed to complete patch request: expected %v response, got %v",
-			expectedStatusCode, resp.StatusCode))
+		return fmt.Errorf("unexpected resp status %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -1544,33 +1462,6 @@ func addPortToServer(server string) string {
 		return server
 	}
 	return fmt.Sprintf("%v:%v", server, defaultServerPort)
-}
-
-func createResponseMismatchError(respBody io.ReadCloser) *internalError {
-	apiErrResp, err := readAPIErrorResponse(respBody)
-	if err != nil {
-		return &internalError{
-			err: fmt.Sprintf("reading response body: %v", err),
-		}
-	}
-
-	return &internalError{
-		err:      apiErrResp.toString(),
-		apiError: apiErrResp.Error,
-	}
-}
-
-func readAPIErrorResponse(respBody io.ReadCloser) (apiErrorResponse, error) {
-	body, err := io.ReadAll(respBody)
-	if err != nil {
-		return apiErrorResponse{}, fmt.Errorf("reading the response body: %w", err)
-	}
-
-	var apiErr apiErrorResponse
-	if err = json.Unmarshal(body, &apiErr); err != nil {
-		return apiErrorResponse{}, fmt.Errorf("unmarshalling apiErrorResponse: got %q response: %w", string(body), err)
-	}
-	return apiErr, nil
 }
 
 func determineServerUpdates(updatedServers []UpstreamServer, nginxServers []UpstreamServer) ([]UpstreamServer, []UpstreamServer, []UpstreamServer) {
@@ -1695,6 +1586,5 @@ func haveSameParametersForStream(newServer StreamUpstreamServer, serverNGX Strea
 	if serverNGX.Weight != nil && newServer.Weight == nil {
 		newServer.Weight = &defaultWeight
 	}
-
-	return reflect.DeepEqual(newServer, serverNGX)
+	return cmp.Equal(newServer, serverNGX)
 }
