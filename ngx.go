@@ -1208,12 +1208,12 @@ func (c *Client) DeleteStreamKeyValuePair(ctx context.Context, zone string, key 
 // To delete a key/value pair you set the value to null via the API,
 // then NGINX+ will delete the key.
 func (c Client) deleteKeyValuePair(ctx context.Context, zone string, key string, stream bool) error {
+	if zone == "" {
+		return errors.New("missing zone")
+	}
 	base := "http"
 	if stream {
 		base = "stream"
-	}
-	if zone == "" {
-		return fmt.Errorf("zone required")
 	}
 	// map[string]string can't have a nil value so we use a different type here.
 	keyval := make(map[string]interface{})
@@ -1237,12 +1237,12 @@ func (c Client) DeleteStreamKeyValPairs(ctx context.Context, zone string) error 
 }
 
 func (c Client) deleteKeyValPairs(ctx context.Context, zone string, stream bool) error {
+	if zone == "" {
+		return errors.New("missing zone")
+	}
 	base := "http"
 	if stream {
 		base = "stream"
-	}
-	if zone == "" {
-		return fmt.Errorf("zone required")
 	}
 	path := fmt.Sprintf("%v/keyvals/%v", base, zone)
 	if err := c.delete(ctx, path, http.StatusNoContent); err != nil {
@@ -1318,11 +1318,6 @@ func (c Client) get(ctx context.Context, path string, data interface{}) error {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
 		return fmt.Errorf("sending request, path: %s, %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -1353,11 +1348,6 @@ func (c Client) post(ctx context.Context, path string, payload interface{}) erro
 	req.Header.Add("Content-Type", "application/json; charset=utf-8")
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("sending POST request %v: %w", path, ctx.Err())
-		default:
-		}
 		return fmt.Errorf("sending POST request %v: %w", path, err)
 	}
 	defer resp.Body.Close()
@@ -1375,11 +1365,6 @@ func (c Client) delete(ctx context.Context, path string, expectedStatusCode int)
 	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
 		return fmt.Errorf("sending DELETE request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -1401,11 +1386,6 @@ func (c Client) patch(ctx context.Context, path string, input interface{}, expec
 	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("sending PATCH request: %w", ctx.Err())
-		default:
-		}
 		return fmt.Errorf("sending PATCH request: %w", err)
 	}
 	defer resp.Body.Close()
