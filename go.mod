@@ -1,4 +1,4 @@
-module github.com/qba73/ngx
+module github.com/sevenbytes/ngx
 
 go 1.19
 

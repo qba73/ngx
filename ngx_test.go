@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/qba73/ngx"
+	"github.com/sevenbytes/ngx"
 )
 
 func newTestServer(respBody string, t *testing.T) *httptest.Server {
