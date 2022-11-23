@@ -1,6 +1,6 @@
-![Go](https://github.com/sevenbytes/ngx/workflows/Go/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/sevenbytes/ngx)](https://goreportcard.com/report/github.com/sevenbytes/ngx)
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/sevenbytes/ngx?logo=go)
+![Go](https://github.com/qba73/ngx/workflows/Go/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/qba73/ngx)](https://goreportcard.com/report/github.com/qba73/ngx)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/qba73/ngx?logo=go)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 # ngx
@@ -27,7 +27,7 @@ The library works against versions 4 to 8 of the NGINX Plus API. The table below
 Import the library using:
 
 ```go
-import "github.com/sevenbytes/ngx"
+import "github.com/qba73/ngx"
 ```
 
 ## Creating a client
