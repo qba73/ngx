@@ -73,7 +73,7 @@ if err != nil {
 Run tests
 
 ```bash
-make test
+make dox
 ```
 
 <details>
