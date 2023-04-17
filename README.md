@@ -33,13 +33,16 @@ import "github.com/qba73/ngx"
 ## Creating a client
 
 Create a new ```Client``` object by calling ```ngx.NewClient(baseURL)```
+
 ```go
 client, err := ngx.NewClient("http://localhost:8080/api")
 if err != nil {
     // handle error
 }
 ```
+
 Or create a client with customized http Client:
+
 ```go
 customHTTPClient := &http.Client{}
 
@@ -51,7 +54,9 @@ if err != nil {
     // handle error
 }
 ```
+
 Or create a client to work with specific version of NGINX instance:
+
 ```go
 client, err := ngx.NewClient(
     "http://localhost:8080/api",
@@ -65,14 +70,12 @@ if err != nil {
 
 ## Testing
 
-Install [gotestdox](https://github.com/bitfield/gotestdox)
-```bash
-go install github.com/bitfield/gotestdox/cmd/gotestdox@latest
-```
 Run tests
+
 ```bash
-$ gotestdox
+make test
 ```
+
 <details>
     <summary>Click to see test run results</summary>
 
@@ -96,15 +99,8 @@ $ gotestdox
  ✔ Client retrives info about running NGINX instance (0.00s)
  ✔ Client retrives NGINX status on valid parameters (0.00s)
 ```
+
 </details>
-
-
-Or use [**earthly**](https://docs.earthly.dev)
-
-```bash
-$ earthly +checks
-```
-
 
 ## Contributing
 
